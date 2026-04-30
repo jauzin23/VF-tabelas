@@ -35,11 +35,13 @@ export function ModelTestUploader() {
     setResult(null);
 
     try {
-      const buffer = await file.arrayBuffer();
+      // Send as multipart/form-data to match FastAPI endpoint
+      const formData = new FormData();
+      formData.append("file", file);
+
       const response = await fetch("/api/model/table-detect", {
         method: "POST",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: buffer,
+        body: formData,
       });
       if (!response.ok) {
         const text = await response.text();
@@ -63,16 +65,27 @@ export function ModelTestUploader() {
         padding: "16px 18px",
       }}
     >
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10 }}>
-        <h3 style={{ margin: 0, fontSize: 13, fontWeight: 900, color: "#0f172a" }}>
-          Testar modelo (Ollama)
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          gap: 10,
+          marginBottom: 10,
+        }}
+      >
+        <h3
+          style={{ margin: 0, fontSize: 13, fontWeight: 900, color: "#0f172a" }}
+        >
+          Testar modelo (Table Transformer)
         </h3>
         <span style={{ fontSize: 12, color: "#64748b" }}>
-          Faz apenas a deteção de tabelas numa imagem
+          Deteta tabelas numa imagem
         </span>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 14 }}>
+      <div
+        style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 14 }}
+      >
         <div>
           <input
             type="file"
@@ -85,7 +98,14 @@ export function ModelTestUploader() {
             }}
           />
 
-          <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center" }}>
+          <div
+            style={{
+              marginTop: 10,
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+            }}
+          >
             <button
               type="button"
               onClick={run}
@@ -111,7 +131,9 @@ export function ModelTestUploader() {
                 </span>
               </span>
             ) : (
-              <span style={{ fontSize: 12, color: "#94a3b8" }}>Escolha uma imagem</span>
+              <span style={{ fontSize: 12, color: "#94a3b8" }}>
+                Escolha uma imagem
+              </span>
             )}
           </div>
 
@@ -145,18 +167,28 @@ export function ModelTestUploader() {
               }}
             >
               <div style={{ fontWeight: 900, marginBottom: 6 }}>
-                {result.hasTable ? "Tabela detetada" : "Nenhuma tabela detetada"}
+                {result.hasTable
+                  ? "Tabela detetada"
+                  : "Nenhuma tabela detetada"}
               </div>
               <div style={{ color: "#475569" }}>
-                confiança={Math.round(result.confidence * 100)}% • caixas={result.boundingBoxes.length} •{" "}
-                {result.elapsedMs}ms{result.model ? ` • model=${result.model}` : ""}
+                confiança={Math.round(result.confidence * 100)}% • caixas=
+                {result.boundingBoxes.length} • {result.elapsedMs}ms
+                {result.model ? ` • model=${result.model}` : ""}
               </div>
             </div>
           ) : null}
 
           {result?.boundingBoxes?.length ? (
             <details style={{ marginTop: 10 }}>
-              <summary style={{ cursor: "pointer", fontSize: 12, color: "#334155", fontWeight: 800 }}>
+              <summary
+                style={{
+                  cursor: "pointer",
+                  fontSize: 12,
+                  color: "#334155",
+                  fontWeight: 800,
+                }}
+              >
                 Ver detalhes (bounding boxes)
               </summary>
               <pre
@@ -189,7 +221,12 @@ export function ModelTestUploader() {
             <img
               src={previewUrl}
               alt="preview"
-              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                display: "block",
+              }}
             />
           ) : (
             <div
@@ -207,4 +244,3 @@ export function ModelTestUploader() {
     </div>
   );
 }
-

@@ -3,166 +3,129 @@ import { ensureEnvLoaded } from "../utils/env.js";
 
 ensureEnvLoaded();
 
-const ollamaUrl = process.env.OLLAMA_URL || "http://localhost:11434";
+const tableDetectorUrl =
+  process.env.TABLE_DETECTOR_URL || "http://localhost:8000";
 
-const modelCandidates = String(
-  process.env.OLLAMA_MODEL_CANDIDATES ||
-    process.env.OLLAMA_MODEL ||
-    "qwen2.5vl:3b,qwen2.5vl:7b",
-)
-  .split(",")
-  .map((m) => m.trim())
-  .filter(Boolean);
-let selectedModel = null;
-const ollamaTimeoutMs = Number.parseInt(
-  process.env.OLLAMA_TIMEOUT_MS ?? "",
+const tableDetectorTimeoutMs = Number.parseInt(
+  process.env.TABLE_DETECTOR_TIMEOUT_MS ?? "",
   10,
 );
-const effectiveOllamaTimeoutMs = Number.isFinite(ollamaTimeoutMs)
-  ? ollamaTimeoutMs
-  : 90000;
+const effectiveTableDetectorTimeoutMs = Number.isFinite(tableDetectorTimeoutMs)
+  ? tableDetectorTimeoutMs
+  : 180000;
 const minTableConfidence = Number.parseFloat(
   process.env.TABLE_MIN_CONFIDENCE ?? "",
 );
 const effectiveMinTableConfidence = Number.isFinite(minTableConfidence)
   ? Math.max(0, Math.min(1, minTableConfidence))
-  : 0.78;
-const ollamaRetryAttemptsRaw = Number.parseInt(
-  process.env.OLLAMA_RETRY_ATTEMPTS ?? "",
-  10,
-);
-const ollamaRetryAttempts = Number.isFinite(ollamaRetryAttemptsRaw)
-  ? Math.max(1, ollamaRetryAttemptsRaw)
-  : 3;
+  : 0.5;
+const toInt = (value, fallback) => {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+const minImageWidth = toInt(process.env.MIN_IMAGE_WIDTH, 120);
+const minImageHeight = toInt(process.env.MIN_IMAGE_HEIGHT, 80);
+const minImageArea = toInt(process.env.MIN_IMAGE_AREA, 120 * 80);
 
-const parseModelJson = (text) => {
-  const trimmed = String(text ?? "").trim();
-  if (!trimmed) return null;
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    // Try to extract the first JSON object from the response.
-    const start = trimmed.indexOf("{");
-    const end = trimmed.lastIndexOf("}");
-    if (start >= 0 && end > start) {
-      try {
-        return JSON.parse(trimmed.slice(start, end + 1));
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  }
+const getImageDimensions = (image) => {
+  const width = image.size?.width ?? image.width ?? 0;
+  const height = image.size?.height ?? image.height ?? 0;
+  return { width, height };
 };
 
-const clamp01 = (v) => Math.max(0, Math.min(1, v));
-
-const normalizeModelResult = (parsed) => {
-  const hasTableRaw = Boolean(parsed?.hasTable);
-  const confidenceRaw =
-    typeof parsed?.confidence === "number"
-      ? clamp01(parsed.confidence)
-      : hasTableRaw
-        ? 0.5
-        : 0;
-  const rows = Number.isFinite(parsed?.rows) ? Number(parsed.rows) : 0;
-  const columns = Number.isFinite(parsed?.columns) ? Number(parsed.columns) : 0;
-  const hasGrid =
-    typeof parsed?.hasGrid === "boolean"
-      ? parsed.hasGrid
-      : rows >= 2 && columns >= 2;
-
-  // Conservative acceptance gate to reduce false positives.
-  const hasTable =
-    hasTableRaw &&
-    hasGrid &&
-    rows >= 2 &&
-    columns >= 2 &&
-    confidenceRaw >= effectiveMinTableConfidence;
-
-  return {
-    hasTable,
-    confidence: confidenceRaw,
-    rows,
-    columns,
-    hasGrid,
-  };
-};
-
-const buildPayload = (model, imageBase64) => {
-  const prompt =
-    "Responde APENAS com JSON válido no formato " +
-    '{"hasTable": true|false, "confidence": 0..1, "hasGrid": true|false, "rows": number, "columns": number}. ' +
-    "Marca hasTable=true apenas se existir grelha visível com pelo menos 2 linhas e 2 colunas. " +
-    "Listas, parágrafos, cartões, botões, formulários, menus, infográficos e texto alinhado NÃO são tabela.";
-
-  return {
-    model,
-    stream: false,
-    keep_alive: "15m",
-    format: "json",
-    messages: [
-      {
-        role: "user",
-        content: prompt,
-        images: [imageBase64],
-      },
-    ],
-    options: {
-      temperature: 0,
-      num_predict: 80,
-    },
-  };
-};
-
-const requestWithModel = async (model, imageBase64, imageSize) => {
-  const payload = buildPayload(model, imageBase64);
-  logger.info("[Ollama] Request config", {
-    url: `${ollamaUrl}/api/chat`,
-    model,
-    imageSize,
-    timeoutMs: effectiveOllamaTimeoutMs,
-  });
-
-  const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    effectiveOllamaTimeoutMs,
+const isTooSmall = (width, height) => {
+  if (width <= 0 || height <= 0) return false;
+  return (
+    width < minImageWidth ||
+    height < minImageHeight ||
+    width * height < minImageArea
   );
-  const requestStartedAt = Date.now();
+};
 
-  try {
-    const response = await fetch(`${ollamaUrl}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    const requestMs = Date.now() - requestStartedAt;
-    logger.info(`[Ollama] Model ${model} responded in ${requestMs}ms`, {
-      status: response.status,
-    });
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(
-        `Ollama HTTP ${response.status}: ${text || "request failed"}`,
-      );
-    }
-    const raw = await response.json();
-    const content = raw?.message?.content ?? raw?.response ?? raw?.output ?? "";
-    return { raw, content };
-  } finally {
-    clearTimeout(timeout);
+// Detect MIME type from buffer magic bytes
+const detectMimeType = (buffer) => {
+  if (buffer.length < 4) return null;
+
+  // PNG: 89 50 4E 47
+  if (
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47
+  ) {
+    return "image/png";
   }
+
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "image/jpeg";
+  }
+
+  // GIF: 47 49 46 38
+  if (
+    buffer[0] === 0x47 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x38
+  ) {
+    return "image/gif";
+  }
+
+  // WebP: RIFF ... WEBP
+  if (
+    buffer[0] === 0x52 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x46
+  ) {
+    if (
+      buffer.length > 12 &&
+      buffer[8] === 0x57 &&
+      buffer[9] === 0x45 &&
+      buffer[10] === 0x42 &&
+      buffer[11] === 0x50
+    ) {
+      return "image/webp";
+    }
+  }
+
+  return null;
+};
+
+const getExtension = (mimeType) => {
+  const map = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/gif": "gif",
+    "image/webp": "webp",
+  };
+  return map[mimeType] || "jpg";
+};
+
+// Helper to create proper multipart/form-data body
+const createMultipartBody = (buffer, mimeType, filename) => {
+  const boundary = `----WebKitFormBoundary${Math.random().toString(36).substring(2, 15)}`;
+
+  const header = Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`,
+    "utf-8",
+  );
+
+  const footer = Buffer.from(`\r\n--${boundary}--\r\n`, "utf-8");
+
+  return {
+    body: Buffer.concat([header, buffer, footer]),
+    boundary,
+  };
 };
 
 /**
- * Ask an Ollama vision model if an image contains a table.
- * Returns a binary classification (no bounding boxes).
+ * Call the Table Detector API (Python FastAPI) to detect tables in an image.
+ * Returns binary classification with confidence score.
  */
-export const detectTablesInImage = async (imageInput) => {
+export const detectTablesInImage = async (imageInput, mimeType) => {
   const startedAt = Date.now();
-  logger.info("[Ollama] Starting table detection");
+  logger.info("[TableDetector] Starting table detection");
 
   let imageBuffer = null;
   try {
@@ -177,80 +140,110 @@ export const detectTablesInImage = async (imageInput) => {
     } else {
       throw new Error("Unsupported image input for table detection.");
     }
-    logger.info(`[Ollama] Image loaded: ${imageBuffer.length} bytes`);
+    logger.info(`[TableDetector] Image loaded: ${imageBuffer.length} bytes`);
   } catch (error) {
-    logger.error("[Ollama] Failed to load image input", error);
+    logger.error("[TableDetector] Failed to load image input", error);
     throw error;
   }
 
-  const imageBase64 = imageBuffer.toString("base64");
-  logger.info(`[Ollama] Image encoded to base64: ${imageBase64.length} chars`);
-
-  const orderedModels = selectedModel
-    ? [selectedModel, ...modelCandidates.filter((m) => m !== selectedModel)]
-    : [...modelCandidates];
-
-  let raw = null;
-  let parsed = null;
-  let modelUsed = null;
-  let lastError = null;
-  for (const model of orderedModels) {
-    try {
-      logger.info(`[Ollama] Sending request with model ${model}`);
-      const result = await requestWithModel(
-        model,
-        imageBase64,
-        imageBuffer.length,
-      );
-      raw = result.raw;
-      parsed = parseModelJson(result.content);
-      modelUsed = model;
-      selectedModel = model;
-      break;
-    } catch (error) {
-      lastError = error;
-      logger.warn(`[Ollama] Model ${model} failed, trying fallback`, {
-        error: error?.message,
-      });
-    }
-  }
-
-  if (!modelUsed) {
-    logger.error("[Ollama] All model candidates failed", {
-      models: orderedModels,
-      error: lastError?.message,
-    });
-    throw (
-      lastError || new Error("No working Ollama model candidate available.")
+  try {
+    logger.info(
+      `[TableDetector] Sending request to ${tableDetectorUrl}/detect-table`,
     );
+
+    // Determine mime type: use provided, detect from buffer, or default
+    const finalMimeType =
+      mimeType || detectMimeType(imageBuffer) || "image/jpeg";
+    const extension = getExtension(finalMimeType);
+    const filename = `image.${extension}`;
+
+    logger.info("[TableDetector] Sending image", {
+      mimeType: finalMimeType,
+      extension,
+      filename,
+      bufferSize: imageBuffer.length,
+      providedMimeType: mimeType,
+      bufferMagic: imageBuffer.slice(0, 8).toString("hex"),
+    });
+
+    // Create proper multipart/form-data body
+    const { body, boundary } = createMultipartBody(
+      imageBuffer,
+      finalMimeType,
+      filename,
+    );
+
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      effectiveTableDetectorTimeoutMs,
+    );
+    const requestStartedAt = Date.now();
+
+    try {
+      const response = await fetch(`${tableDetectorUrl}/detect-table`, {
+        method: "POST",
+        headers: {
+          "Content-Type": `multipart/form-data; boundary=${boundary}`,
+        },
+        body: body,
+        signal: controller.signal,
+      });
+
+      const requestMs = Date.now() - requestStartedAt;
+      logger.info(`[TableDetector] API responded in ${requestMs}ms`, {
+        status: response.status,
+      });
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(
+          `Table Detector HTTP ${response.status}: ${text || "request failed"}`,
+        );
+      }
+
+      const result = await response.json();
+      logger.info(
+        `[TableDetector] Raw API Response:`,
+        JSON.stringify(result, null, 2),
+      );
+
+      // Extract relevant data from Python API response (nested in details)
+      const hasTable = Boolean(result.has_table);
+      const details = result.details || {};
+      const confidence =
+        typeof details.average_confidence === "number"
+          ? Math.max(0, Math.min(1, details.average_confidence))
+          : 0;
+      const tablesDetected = Number.isFinite(details.tables_detected)
+        ? details.tables_detected
+        : 0;
+
+      // Apply confidence threshold
+      const acceptTable = hasTable && confidence >= effectiveMinTableConfidence;
+
+      logger.info(`[TableDetector] Detection complete`, {
+        hasTable: acceptTable,
+        confidence: confidence,
+        tablesDetected,
+        totalElapsedMs: Date.now() - startedAt,
+      });
+
+      return {
+        hasTable: acceptTable,
+        confidence: Math.round(confidence * 1000) / 1000,
+        boundingBoxes: details.detections || [],
+        elapsedMs: Date.now() - startedAt,
+        model: "table-transformer-detection",
+        tablesDetected,
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (error) {
+    logger.error("[TableDetector] Detection failed", error);
+    throw error;
   }
-
-  logger.info("[Ollama] Raw response keys", {
-    keys: raw ? Object.keys(raw) : [],
-    modelUsed,
-  });
-  logger.info("[Ollama] Parsed JSON result", parsed);
-
-  const normalized = normalizeModelResult(parsed || {});
-  const elapsedMs = Date.now() - startedAt;
-
-  logger.info(`[Ollama] Detection complete`, {
-    hasTable: normalized.hasTable,
-    confidence: normalized.confidence,
-    rows: normalized.rows,
-    columns: normalized.columns,
-    hasGrid: normalized.hasGrid,
-    totalElapsedMs: elapsedMs,
-    model: modelUsed,
-  });
-
-  return {
-    hasTable: normalized.hasTable,
-    confidence: Math.round(normalized.confidence * 1000) / 1000,
-    boundingBoxes: [],
-    elapsedMs,
-    model: modelUsed,
-  };
 };
 
 /**
@@ -270,24 +263,18 @@ export const detectTablesForJob = async (jobId, images, onProgress) => {
       });
       continue;
     }
+    const { width, height } = getImageDimensions(image);
+    if (isTooSmall(width, height)) {
+      output.push({
+        ...image,
+        tableDetection: { status: "skipped", reason: "too_small" },
+      });
+      continue;
+    }
 
     processed += 1;
     try {
-      let result = null;
-      let lastError = null;
-      for (let attempt = 1; attempt <= ollamaRetryAttempts; attempt += 1) {
-        try {
-          result = await detectTablesInImage(image.sourceUrl);
-          break;
-        } catch (error) {
-          lastError = error;
-          logger.warn(
-            `Table detection attempt ${attempt}/${ollamaRetryAttempts} failed for ${image.sourceUrl}`,
-            error,
-          );
-        }
-      }
-      if (!result) throw lastError || new Error("Table detection failed.");
+      const result = await detectTablesInImage(image.sourceUrl);
       if (result.hasTable) detected += 1;
 
       output.push({

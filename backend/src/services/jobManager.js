@@ -67,6 +67,16 @@ const dedupeBySourceUrl = (images) => {
 const getJobDir = (jobId) => path.join(dataPath, "jobs", jobId);
 const getJobJsonPath = (jobId) => path.join(getJobDir(jobId), "job.json");
 
+const compactResultItem = (item) => ({
+  id: item.id,
+  sourceUrl: item.sourceUrl,
+  foundPageUrls: item.foundPageUrls ?? [],
+  size: item.size ?? { width: item.width ?? 0, height: item.height ?? 0 },
+  hasTable: Boolean(item.tableDetection?.status === "detected" || item.hasTable),
+  ocrStatus: item.ocr?.status ?? "skipped",
+  tableStatus: item.tableDetection?.status ?? "skipped",
+});
+
 const persistJobSnapshot = async (job) => {
   const snapshot = {
     id: job.id,
@@ -78,7 +88,7 @@ const persistJobSnapshot = async (job) => {
     error: job.error,
     options: job.options,
     progress: job.progress,
-    results: job.results,
+    results: (job.results ?? []).map(compactResultItem),
     updatedAt: new Date().toISOString(),
   };
   await fs.mkdir(getJobDir(job.id), { recursive: true });

@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import multer from "multer";
 import { jobsRouter } from "./routes/jobs.js";
 import { modelRouter } from "./routes/model.js";
 import { logger } from "./utils/logger.js";
@@ -14,13 +15,13 @@ const port = Number.parseInt(process.env.BACKEND_PORT ?? "4000", 10);
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
-app.use(
-  "/api/model",
-  express.raw({
-    type: ["image/*", "application/octet-stream"],
-    limit: "15mb",
-  }),
-);
+// Configure multer for image upload (memory storage, no disk writes)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+});
+
+app.use("/api/model", upload.single("file"));
 app.use((req, _res, next) => {
   // Avoid spamming logs for polling/SSE traffic.
   const isJobGet =

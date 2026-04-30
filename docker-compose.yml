@@ -10,12 +10,13 @@ services:
       - MAX_PAGES=50
       - MAX_DEPTH=3
       - PAGE_TIMEOUT_MS=30000
-      - OLLAMA_URL=http://ollama:11434
-      - OLLAMA_MODEL=qwen2.5vl:7b
+      - TABLE_DETECTOR_URL=http://table-detector:8000
+      - TABLE_DETECTOR_TIMEOUT_MS=180000
+      - TABLE_MIN_CONFIDENCE=0.5
     volumes:
       - app_data:/data
     depends_on:
-      - ollama
+      - table-detector
 
   frontend:
     build: ./frontend
@@ -28,14 +29,19 @@ services:
     depends_on:
       - backend
 
-  ollama:
-    image: ollama/ollama:latest
+  table-detector:
+    build: ./backend/table-detector
     ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    command: ["sh", "-lc", "ollama pull qwen2.5vl:7b && exec ollama serve"]
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
 volumes:
   app_data:
-  ollama_data:

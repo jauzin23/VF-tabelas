@@ -13,23 +13,27 @@ modelRouter.post("/table-detect", async (req, res) => {
   const requestId = crypto.randomUUID().substring(0, 8);
   logger.info(`[${requestId}] POST /table-detect - Image upload received`);
 
-  const contentType = req.headers["content-type"];
-  const buffer = req.body;
+  const file = req.file;
+  const buffer = file?.buffer;
 
   logger.info(`[${requestId}] Request details`, {
-    contentType,
+    fileName: file?.originalname,
+    mimeType: file?.mimetype,
     bufferSize: buffer?.length,
     isBuffer: buffer instanceof Buffer,
+    bufferMagic: buffer?.slice(0, 8).toString("hex"),
   });
 
   if (!buffer || !(buffer instanceof Buffer) || buffer.length === 0) {
     logger.warn(`[${requestId}] Invalid buffer`, {
+      fileExists: !!file,
       bufferExists: !!buffer,
       isBuffer: buffer instanceof Buffer,
       length: buffer?.length,
+      bufferType: buffer?.constructor?.name,
     });
     res.status(400).json({
-      error: "Missing image body. Send raw bytes with Content-Type: image/*.",
+      error: "Missing image file. Upload with form-data key 'file'.",
     });
     return;
   }
@@ -43,7 +47,7 @@ modelRouter.post("/table-detect", async (req, res) => {
   const startedAt = Date.now();
   try {
     logger.info(`[${requestId}] Starting table detection...`);
-    const result = await detectTablesInImage(buffer);
+    const result = await detectTablesInImage(buffer, file?.mimetype);
     const elapsedMs = Date.now() - startedAt;
 
     logger.info(`[${requestId}] Detection successful`, {
