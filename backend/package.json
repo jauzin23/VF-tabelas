@@ -1,0 +1,19 @@
+{
+  "name": "table-detector-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2",
+    "image-size": "^2.0.2",
+    "playwright": "^1.59.1",
+    "tesseract.js": "^7.0.0",
+    "uuid": "^11.1.0"
+  }
+}

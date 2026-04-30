@@ -1,0 +1,41 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - BACKEND_PORT=4000
+      - DATA_PATH=/data
+      - MAX_PAGES=50
+      - MAX_DEPTH=3
+      - PAGE_TIMEOUT_MS=30000
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=qwen2.5vl:7b
+    volumes:
+      - app_data:/data
+    depends_on:
+      - ollama
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - BACKEND_URL=http://backend:4000
+      - NEXT_PUBLIC_API_BASE=/api/jobs
+    depends_on:
+      - backend
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    command: ["sh", "-lc", "ollama pull qwen2.5vl:7b && exec ollama serve"]
+
+volumes:
+  app_data:
+  ollama_data:
