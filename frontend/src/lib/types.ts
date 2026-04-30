@@ -21,21 +21,42 @@ export interface JobData {
   };
   results: Array<{
     id: string;
-    pageUrl: string;
-    pageTitle: string;
-    imageSrc: string;
+    sourceUrl: string;
+    foundPageUrls: string[];
+    foundAt: string;
+    sourceUrlId?: string;
     imageAlt: string;
     width: number;
     height: number;
+    size?: {
+      width: number;
+      height: number;
+      bytes?: number;
+    };
     hasTable: boolean;
-    imageFile?: string;
-    imageMetadataFile?: string;
+    fetch?: {
+      status: "ok" | "error";
+      statusCode?: number;
+      contentType?: string | null;
+      finalUrl?: string;
+    };
     ocr?: {
       status: "passed" | "failed" | "skipped" | "error";
-      reason?: "missing_file" | "too_small";
+      reason?:
+        | "missing_source"
+        | "too_small"
+        | "fetch_failed"
+        | "alt_filtered"
+        | "too_small_rendered"
+        | "too_small_actual";
       words?: number;
       confidence?: number;
       text?: string;
+    };
+    tableDetection?: {
+      status: "detected" | "none" | "skipped" | "error";
+      confidence?: number;
+      boundingBoxes?: unknown[];
     };
   }>;
 }

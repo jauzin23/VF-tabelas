@@ -523,31 +523,6 @@ export default function HomePage() {
             Detetor de Imagens
           </h1>
           {/* feature badges */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-            {[
-              { icon: <IconImage size={11} />, label: "Deteta imagens" },
-              { icon: <IconTable size={11} />, label: "Analisa tabelas" },
-            ].map(({ icon, label }) => (
-              <span
-                key={label}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                  background: NAVY_50,
-                  border: `1px solid ${NAVY_100}`,
-                  color: NAVY,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  padding: "4px 10px",
-                  borderRadius: 50,
-                  letterSpacing: "0.04em",
-                }}
-              >
-                {icon} {label}
-              </span>
-            ))}
-          </div>
         </div>
         <p
           style={{
@@ -591,7 +566,11 @@ export default function HomePage() {
 
       {/* ── Model test (single image) ── */}
       <div className="sec">
-        <Step n="1.5" title="Testar modelo" sub="Upload de uma imagem (apenas ONNX)" />
+        <Step
+          n="1.5"
+          title="Testar modelo"
+          sub="Upload de uma imagem (apenas ONNX)"
+        />
         <ModelTestUploader />
       </div>
 

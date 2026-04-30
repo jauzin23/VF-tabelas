@@ -1,5 +1,3 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { imageSize } from "image-size";
 import { logger } from "../utils/logger.js";
 import { ensureEnvLoaded } from "../utils/env.js";
@@ -35,32 +33,33 @@ const isTooSmall = (width, height) => {
   );
 };
 
-const toSafeExt = (contentType, imageUrl) => {
-  const byUrl = path.extname(new URL(imageUrl).pathname).toLowerCase();
-  if (byUrl && byUrl.length <= 5) return byUrl;
-
-  if (!contentType) return ".img";
-  if (contentType.includes("jpeg")) return ".jpg";
-  if (contentType.includes("png")) return ".png";
-  if (contentType.includes("webp")) return ".webp";
-  if (contentType.includes("gif")) return ".gif";
-  if (contentType.includes("bmp")) return ".bmp";
-  if (contentType.includes("avif")) return ".avif";
-  return ".img";
-};
-
-const downloadOne = async (image, jobDir) => {
+const fetchImageMetadata = async (image) => {
   try {
     if (shouldSkipByAlt(image.imageAlt)) {
-      return image;
+      return {
+        ...image,
+        skipped: { reason: "alt_filtered" },
+      };
     }
 
     if (isTooSmall(image.width, image.height)) {
-      return image;
+      return {
+        ...image,
+        skipped: { reason: "too_small_rendered" },
+      };
     }
 
-    const response = await fetch(image.imageSrc);
-    if (!response.ok) return image;
+    const response = await fetch(image.sourceUrl);
+    if (!response.ok) {
+      return {
+        ...image,
+        fetch: {
+          status: "error",
+          statusCode: response.status,
+          finalUrl: response.url,
+        },
+      };
+    }
     const buffer = Buffer.from(await response.arrayBuffer());
 
     const measured = (() => {
@@ -72,80 +71,55 @@ const downloadOne = async (image, jobDir) => {
       }
     })();
     if (isTooSmall(measured.width, measured.height)) {
-      return image;
+      return {
+        ...image,
+        skipped: { reason: "too_small_actual" },
+      };
     }
-
-    const ext = toSafeExt(response.headers.get("content-type"), image.imageSrc);
-    const baseName = `img_${image.id}`;
-    const imageFileName = `${baseName}${ext}`;
-    const metadataFileName = `${baseName}.json`;
-    const imageAbsolutePath = path.join(jobDir, imageFileName);
-    const metadataAbsolutePath = path.join(jobDir, metadataFileName);
-
-    await fs.writeFile(imageAbsolutePath, buffer);
-    const metadata = {
-      imageId: image.id,
-      downloadedAt: new Date().toISOString(),
-      foundOnPageUrl: image.pageUrl,
-      foundOnPageTitle: image.pageTitle,
-      imageSourceUrl: image.imageSrc,
-      imageAlt: image.imageAlt,
-      renderedSize: {
-        width: image.width,
-        height: image.height,
-      },
-      actualSize: measured,
-      download: {
-        finalUrl: response.url,
-        statusCode: response.status,
-        contentType: response.headers.get("content-type"),
-        byteLength: buffer.length,
-      },
-      files: {
-        image: imageFileName,
-        metadata: metadataFileName,
-      },
-    };
-    await fs.writeFile(
-      metadataAbsolutePath,
-      JSON.stringify(metadata, null, 2),
-      "utf8",
-    );
 
     return {
       ...image,
       width: image.width || measured.width,
       height: image.height || measured.height,
-      imageFile: imageAbsolutePath,
-      imageMetadataFile: metadataAbsolutePath,
+      size: {
+        width: measured.width || image.width || 0,
+        height: measured.height || image.height || 0,
+        bytes: buffer.length,
+      },
+      fetch: {
+        status: "ok",
+        statusCode: response.status,
+        contentType: response.headers.get("content-type"),
+        finalUrl: response.url,
+      },
     };
   } catch (error) {
-    logger.warn(`Failed to download image ${image.imageSrc}`, error);
-    return image;
+    logger.warn(`Failed to fetch metadata for image ${image.sourceUrl}`, error);
+    return {
+      ...image,
+      fetch: {
+        status: "error",
+      },
+    };
   }
 };
 
-export const downloadImagesForJob = async (jobId, images, dataPath) => {
-  const jobDir = path.join(dataPath, "jobs", jobId, "images", "raw");
-  await fs.mkdir(jobDir, { recursive: true });
-
+export const downloadImagesForJob = async (jobId, images) => {
   const eligible = images.filter((img) => !isTooSmall(img.width, img.height));
   const concurrency = 8;
   const output = [];
   for (let index = 0; index < eligible.length; index += concurrency) {
     const chunk = eligible.slice(index, index + concurrency);
     const downloaded = await Promise.all(
-      chunk.map((item) => downloadOne(item, jobDir)),
+      chunk.map((item) => fetchImageMetadata(item)),
     );
     output.push(...downloaded);
   }
 
-  logger.info(`Downloaded images for job ${jobId}`, {
+  logger.info(`Fetched image metadata for job ${jobId}`, {
     total: images.length,
     eligible: eligible.length,
-    withFile: output.filter((img) => Boolean(img.imageFile)).length,
-    withMetadata: output.filter((img) => Boolean(img.imageMetadataFile)).length,
-    storageDir: jobDir,
+    fetchSuccess: output.filter((img) => img.fetch?.status === "ok").length,
     minImage: {
       width: minImageWidth,
       height: minImageHeight,

@@ -56,7 +56,6 @@ export const crawlSite = async (targetUrl, options, callbacks) => {
   const queue = [{ url: normalizedTarget, depth: 0 }];
   const visited = new Set();
   const results = [];
-  const seenImageUrls = new Set();
 
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
@@ -179,8 +178,6 @@ export const crawlSite = async (targetUrl, options, callbacks) => {
             if (ignoredSvgSamples.length < 3) ignoredSvgSamples.push(img.src);
             continue;
           }
-          if (seenImageUrls.has(absoluteSrc)) continue;
-          seenImageUrls.add(absoluteSrc);
           if (isTooSmall(img.width, img.height)) {
             ignoredSmall += 1;
             if (ignoredSmallSamples.length < 3) {

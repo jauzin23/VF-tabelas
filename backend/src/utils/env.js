@@ -45,5 +45,10 @@ export const resolveDataPath = (rawDataPath) => {
     return path.resolve(workspaceRoot, rawDataPath.slice(1));
   }
 
+  // Handle relative paths like ./data or ../data
+  if (!path.isAbsolute(rawDataPath)) {
+    return path.resolve(workspaceRoot, rawDataPath);
+  }
+
   return rawDataPath;
 };

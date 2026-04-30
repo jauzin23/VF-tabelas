@@ -1,37 +1,14 @@
 import { Router } from "express";
-import fs from "node:fs/promises";
-import path from "node:path";
 import { createJob, deleteJob, getJob } from "../services/jobManager.js";
 import { logger } from "../utils/logger.js";
 import { addJobEventClient } from "../services/jobEvents.js";
-import { ensureEnvLoaded, resolveDataPath } from "../utils/env.js";
+import { ensureEnvLoaded } from "../utils/env.js";
 
 export const jobsRouter = Router();
 
 ensureEnvLoaded();
-const dataPath = resolveDataPath(process.env.DATA_PATH);
 
-const listImagesInDir = async (dirAbsolute) => {
-  try {
-    const entries = await fs.readdir(dirAbsolute, { withFileTypes: true });
-    return entries
-      .filter((e) => e.isFile())
-      .map((e) => e.name)
-      .filter((name) => name.startsWith("img_"))
-      .filter((name) => !name.toLowerCase().endsWith(".json"))
-      .sort((a, b) => a.localeCompare(b));
-  } catch {
-    return [];
-  }
-};
-
-const jobImagesDir = (jobId, group) =>
-  path.join(dataPath, "jobs", jobId, "images", group);
-
-const isSafeFileName = (name) => {
-  return /^img_[a-z0-9-]+\.[a-z0-9]{1,5}$/i.test(name);
-};
-
+// POST /api/jobs
 jobsRouter.post("/", (req, res) => {
   try {
     const body = req.body;
@@ -68,6 +45,7 @@ jobsRouter.post("/", (req, res) => {
   }
 });
 
+// GET /api/jobs/:id/images
 jobsRouter.get("/:id/images", async (req, res) => {
   const jobId = req.params.id;
   const job = getJob(jobId);
@@ -76,75 +54,30 @@ jobsRouter.get("/:id/images", async (req, res) => {
     return;
   }
 
-  const rawDir = jobImagesDir(jobId, "raw");
-  const passedDir = jobImagesDir(jobId, "passed");
-  const tabelaDir = jobImagesDir(jobId, "tabela");
-  const [raw, passed, tabela] = await Promise.all([
-    listImagesInDir(rawDir),
-    listImagesInDir(passedDir),
-    listImagesInDir(tabelaDir),
-  ]);
-
   res.json({
     jobId,
-    raw: raw.map((name) => ({
-      name,
-      url: `/api/jobs/${jobId}/images/raw/${encodeURIComponent(name)}`,
-    })),
-    passed: passed.map((name) => ({
-      name,
-      url: `/api/jobs/${jobId}/images/passed/${encodeURIComponent(name)}`,
-    })),
-    tabela: tabela.map((name) => ({
-      name,
-      url: `/api/jobs/${jobId}/images/tabela/${encodeURIComponent(name)}`,
+    items: (job.results ?? []).map((item) => ({
+      id: item.id,
+      sourceUrl: item.sourceUrl,
+      foundPageUrls: item.foundPageUrls ?? [],
+      foundAt: item.foundAt,
+      size: item.size ?? { width: item.width ?? 0, height: item.height ?? 0 },
+      ocrStatus: item.ocr?.status ?? "skipped",
+      hasTable: Boolean(item.tableDetection?.status === "detected"),
+      tableStatus: item.tableDetection?.status ?? "skipped",
     })),
   });
 });
 
-jobsRouter.get("/:id/images/:group/:file", async (req, res) => {
-  const jobId = req.params.id;
-  const job = getJob(jobId);
-  if (!job) {
-    res.status(404).json({ error: "Job not found." });
-    return;
-  }
-
-  const group = String(req.params.group);
-  if (!["raw", "passed", "tabela"].includes(group)) {
-    res
-      .status(400)
-      .json({ error: "Invalid group. Use 'raw', 'passed' or 'tabela'." });
-    return;
-  }
-
-  const file = String(req.params.file);
-  if (!isSafeFileName(file)) {
-    res.status(400).json({ error: "Invalid file name." });
-    return;
-  }
-
-  const absolute = path.join(jobImagesDir(jobId, group), file);
-  try {
-    await fs.access(absolute);
-  } catch {
-    res.status(404).json({ error: "Image not found." });
-    return;
-  }
-
-  res.sendFile(absolute);
+// GET /api/jobs/:id/images/:group/:file
+jobsRouter.get("/:id/images/:group/:file", (_req, res) => {
+  res.status(410).json({
+    error:
+      "Legacy image file endpoint removed. Use GET /api/jobs/:id/images items[].sourceUrl.",
+  });
 });
 
-jobsRouter.get("/:id", (req, res) => {
-  const job = getJob(req.params.id);
-  if (!job) {
-    res.status(404).json({ error: "Job not found." });
-    return;
-  }
-
-  res.json(job);
-});
-
+// GET /api/jobs/:id/events  (SSE)
 jobsRouter.get("/:id/events", (req, res) => {
   const job = getJob(req.params.id);
   if (!job) {
@@ -156,14 +89,29 @@ jobsRouter.get("/:id/events", (req, res) => {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache, no-transform",
     Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
   });
+  res.flushHeaders();
 
+  // Send the current state immediately so the client is never blank.
   res.write(`event: job\n`);
   res.write(`data: ${JSON.stringify(job)}\n\n`);
 
   addJobEventClient(req.params.id, res);
 });
 
+// GET /api/jobs/:id
+jobsRouter.get("/:id", (req, res) => {
+  const job = getJob(req.params.id);
+  if (!job) {
+    res.status(404).json({ error: "Job not found." });
+    return;
+  }
+
+  res.json(job);
+});
+
+// DELETE /api/jobs/:id
 jobsRouter.delete("/:id", (req, res) => {
   const deleted = deleteJob(req.params.id);
   if (!deleted) {

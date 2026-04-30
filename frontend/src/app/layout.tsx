@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 export const metadata = {
-  title: "Detetor de Imagens com Tabelas",
+  title: "Detetor de Tabelas",
   description: "Detetar imagens (ex.: prints de tabelas) em websites",
 };
 

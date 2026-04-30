@@ -12,10 +12,8 @@ const app = express();
 const port = Number.parseInt(process.env.BACKEND_PORT ?? "4000", 10);
 
 app.use(cors());
-// JSON for normal API requests.
 app.use(express.json({ limit: "1mb" }));
 
-// Raw image uploads for model testing.
 app.use(
   "/api/model",
   express.raw({

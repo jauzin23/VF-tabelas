@@ -1,11 +1,15 @@
 import type { JobData } from "./types";
 
+// Server-side API calls use NEXT_PUBLIC_API_BASE (e.g. /api/jobs).
+// The Next.js route handlers proxy these to the backend.
 const base = process.env.NEXT_PUBLIC_API_BASE || "/api/jobs";
 
-const readErrorMessage = async (response: Response, fallback: string): Promise<string> => {
+const readErrorMessage = async (
+  response: Response,
+  fallback: string,
+): Promise<string> => {
   const text = await response.text();
   if (!text) return fallback;
-
   try {
     const parsed = JSON.parse(text) as { error?: string };
     return parsed.error || fallback;
@@ -41,16 +45,33 @@ export const getJob = async (jobId: string): Promise<JobData> => {
 
 export type JobImagesResponse = {
   jobId: string;
-  raw: Array<{ name: string; url: string }>;
-  passed: Array<{ name: string; url: string }>;
-  tabela: Array<{ name: string; url: string }>;
+  items: Array<{
+    id: string;
+    sourceUrl: string;
+    foundPageUrls: string[];
+    foundAt: string;
+    size: { width: number; height: number; bytes?: number };
+    ocrStatus: "passed" | "failed" | "skipped" | "error";
+    hasTable: boolean;
+    tableStatus: "detected" | "none" | "skipped" | "error";
+  }>;
 };
 
-export const getJobImages = async (jobId: string): Promise<JobImagesResponse> => {
-  const response = await fetch(`${base}/${jobId}/images`, { cache: "no-store" });
+export const getJobImages = async (
+  jobId: string,
+): Promise<JobImagesResponse> => {
+  const response = await fetch(`${base}/${jobId}/images`, {
+    cache: "no-store",
+  });
   if (!response.ok) {
-    const message = await readErrorMessage(response, "Failed to fetch job images");
+    const message = await readErrorMessage(
+      response,
+      "Failed to fetch job images",
+    );
     throw new Error(message);
   }
-  return response.json() as Promise<JobImagesResponse>;
+
+  const data = (await response.json()) as JobImagesResponse;
+
+  return data;
 };

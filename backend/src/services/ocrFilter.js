@@ -130,17 +130,15 @@ const computeStats = (result) => {
 export const ocrFilterImages = async (images, onProgress) => {
   const worker = await getWorker();
   const output = [];
-  let processed = 0;
+  let processed = 0; // OCR attempts only (exclude skipped)
   let passed = 0;
 
   for (const image of images) {
-    processed += 1;
-    if (!image.imageFile) {
+    if (!image.sourceUrl || image.fetch?.status !== "ok") {
       output.push({
         ...image,
-        ocr: { status: "skipped", reason: "missing_file" },
+        ocr: { status: "skipped", reason: "missing_source" },
       });
-      onProgress?.(processed, passed);
       continue;
     }
     if (
@@ -154,12 +152,22 @@ export const ocrFilterImages = async (images, onProgress) => {
         ...image,
         ocr: { status: "skipped", reason: "too_small" },
       });
-      onProgress?.(processed, passed);
       continue;
     }
 
+    processed += 1;
     try {
-      const result = await worker.recognize(image.imageFile);
+      const response = await fetch(image.sourceUrl);
+      if (!response.ok) {
+        output.push({
+          ...image,
+          ocr: { status: "error", reason: "fetch_failed" },
+        });
+        onProgress?.(processed, passed);
+        continue;
+      }
+      const imageBuffer = Buffer.from(await response.arrayBuffer());
+      const result = await worker.recognize(imageBuffer);
       const stats = computeStats(result);
       const ok =
         stats.words >= ocrMinWords &&
@@ -179,7 +187,7 @@ export const ocrFilterImages = async (images, onProgress) => {
         },
       });
     } catch (error) {
-      logger.warn(`OCR failed for ${image.imageFile}`, error);
+      logger.warn(`OCR failed for ${image.sourceUrl}`, error);
       output.push({ ...image, ocr: { status: "error" } });
     }
 

@@ -7,3 +7,4 @@ coverage/
 *.log
 data/jobs/*
 !data/jobs/.gitkeep
+imagens-teste/*

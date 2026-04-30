@@ -12,6 +12,7 @@ import { ensureEnvLoaded, resolveDataPath } from "../utils/env.js";
 const jobs = new Map();
 
 ensureEnvLoaded();
+const dataPath = resolveDataPath(process.env.DATA_PATH);
 
 const toInt = (value, fallback) => {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -24,57 +25,73 @@ const defaults = {
   pageTimeoutMs: toInt(process.env.PAGE_TIMEOUT_MS, 10000),
 };
 
-const dataPath = resolveDataPath(process.env.DATA_PATH);
+const dedupeBySourceUrl = (images) => {
+  const map = new Map();
 
-const moveFileSafe = async (sourcePath, destinationPath) => {
-  await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+  for (const image of images) {
+    const key = image.imageSrc;
+    const foundAt = image.foundAt || new Date().toISOString();
+    if (!map.has(key)) {
+      map.set(key, {
+        id: `${map.size + 1}`,
+        sourceUrl: image.imageSrc,
+        sourceUrlId: image.imageSrc,
+        foundPageUrls: [image.pageUrl],
+        foundAt,
+        size: {
+          width: image.width || 0,
+          height: image.height || 0,
+        },
+        imageAlt: image.imageAlt || "",
+        hasTable: false,
+      });
+      continue;
+    }
 
-  try {
-    await fs.rename(sourcePath, destinationPath);
-  } catch (error) {
-    const code = error instanceof Error ? error.code : undefined;
-    if (code !== "EXDEV") throw error;
-
-    await fs.copyFile(sourcePath, destinationPath);
-    await fs.unlink(sourcePath);
+    const existing = map.get(key);
+    if (!existing.foundPageUrls.includes(image.pageUrl)) {
+      existing.foundPageUrls.push(image.pageUrl);
+    }
+    if (!existing.size.width && image.width) existing.size.width = image.width;
+    if (!existing.size.height && image.height) existing.size.height = image.height;
+    if (!existing.imageAlt && image.imageAlt) existing.imageAlt = image.imageAlt;
+    if (foundAt < existing.foundAt) existing.foundAt = foundAt;
   }
 
-  return destinationPath;
+  return Array.from(map.values()).map((item, index) => ({
+    ...item,
+    id: `${index + 1}`,
+  }));
 };
 
-const movePassedOcrAssets = async (jobId, images) => {
-  const passedImagesDir = path.join(
-    dataPath,
-    "jobs",
-    jobId,
-    "images",
-    "passed",
+const getJobDir = (jobId) => path.join(dataPath, "jobs", jobId);
+const getJobJsonPath = (jobId) => path.join(getJobDir(jobId), "job.json");
+
+const persistJobSnapshot = async (job) => {
+  const snapshot = {
+    id: job.id,
+    targetUrl: job.targetUrl,
+    status: job.status,
+    createdAt: job.createdAt,
+    startedAt: job.startedAt,
+    finishedAt: job.finishedAt,
+    error: job.error,
+    options: job.options,
+    progress: job.progress,
+    results: job.results,
+    updatedAt: new Date().toISOString(),
+  };
+  await fs.mkdir(getJobDir(job.id), { recursive: true });
+  await fs.writeFile(
+    getJobJsonPath(job.id),
+    JSON.stringify(snapshot, null, 2),
+    "utf8",
   );
+};
 
-  return Promise.all(
-    images.map(async (image) => {
-      if (image.ocr?.status !== "passed" || !image.imageFile) {
-        return image;
-      }
-
-      const nextImageFile = await moveFileSafe(
-        image.imageFile,
-        path.join(passedImagesDir, path.basename(image.imageFile)),
-      );
-      const nextMetadataFile = image.imageMetadataFile
-        ? await moveFileSafe(
-            image.imageMetadataFile,
-            path.join(passedImagesDir, path.basename(image.imageMetadataFile)),
-          )
-        : undefined;
-
-      return {
-        ...image,
-        imageFile: nextImageFile,
-        imageMetadataFile: nextMetadataFile,
-      };
-    }),
-  );
+const publishAndPersist = async (job) => {
+  publishJobUpdate(job);
+  await persistJobSnapshot(job);
 };
 
 export const createJob = (payload) => {
@@ -103,14 +120,18 @@ export const createJob = (payload) => {
   };
 
   jobs.set(id, job);
-  publishJobUpdate(job);
+  publishAndPersist(job).catch((error) => {
+    logger.warn(`Failed to persist newly created job ${job.id}`, error);
+  });
   runJob(job).catch((error) => {
     const message = error instanceof Error ? error.message : "Unknown error";
     logger.error(`Job ${job.id} failed`, error);
     job.status = "failed";
     job.error = message;
     job.finishedAt = new Date().toISOString();
-    publishJobUpdate(job);
+    publishAndPersist(job).catch((persistError) => {
+      logger.warn(`Failed to persist failed job ${job.id}`, persistError);
+    });
   });
 
   return job;
@@ -123,41 +144,59 @@ const runJob = async (job) => {
     targetUrl: job.targetUrl,
     options: job.options,
   });
-  publishJobUpdate(job);
+  await publishAndPersist(job);
 
-  job.results = await crawlSite(job.targetUrl, job.options, {
+  const crawled = await crawlSite(job.targetUrl, job.options, {
     onPagesDiscovered: (count) => {
       job.progress.pagesDiscovered = count;
-      publishJobUpdate(job);
+      publishAndPersist(job).catch((error) => {
+        logger.warn(`Failed to persist pagesDiscovered for ${job.id}`, error);
+      });
     },
     onPageProcessed: () => {
       job.progress.pagesProcessed += 1;
-      publishJobUpdate(job);
+      publishAndPersist(job).catch((error) => {
+        logger.warn(`Failed to persist pageProcessed for ${job.id}`, error);
+      });
     },
     onImagesFound: (count) => {
       job.progress.imagesFound = count;
-      publishJobUpdate(job);
+      publishAndPersist(job).catch((error) => {
+        logger.warn(`Failed to persist imagesFound for ${job.id}`, error);
+      });
     },
   });
-  job.results = await downloadImagesForJob(job.id, job.results, dataPath);
-  job.progress.imagesDownloaded = job.results.filter((img) =>
-    Boolean(img.imageFile),
+  job.results = dedupeBySourceUrl(crawled);
+  job.progress.imagesFound = job.results.length;
+  await publishAndPersist(job);
+
+  job.results = await downloadImagesForJob(job.id, job.results);
+  job.progress.imagesDownloaded = job.results.filter(
+    (img) => img.fetch?.status === "ok",
   ).length;
-  publishJobUpdate(job);
+  await publishAndPersist(job);
+
   job.results = await ocrFilterImages(job.results, (processed, passed) => {
     job.progress.imagesOcrProcessed = processed;
     job.progress.imagesPassedOcr = passed;
-    publishJobUpdate(job);
+    publishAndPersist(job).catch((error) => {
+      logger.warn(`Failed to persist OCR progress for ${job.id}`, error);
+    });
   });
-  job.results = await movePassedOcrAssets(job.id, job.results);
-  publishJobUpdate(job);
+  await publishAndPersist(job);
 
-  job.results = await detectTablesForJob(job.id, job.results, (processed, detected) => {
-    job.progress.imagesTableProcessed = processed;
-    job.progress.tablesDetected = detected;
-    publishJobUpdate(job);
-  });
-  publishJobUpdate(job);
+  job.results = await detectTablesForJob(
+    job.id,
+    job.results,
+    (processed, detected) => {
+      job.progress.imagesTableProcessed = processed;
+      job.progress.tablesDetected = detected;
+      publishAndPersist(job).catch((error) => {
+        logger.warn(`Failed to persist table progress for ${job.id}`, error);
+      });
+    },
+  );
+  await publishAndPersist(job);
 
   job.status = "completed";
   job.finishedAt = new Date().toISOString();
@@ -166,7 +205,7 @@ const runJob = async (job) => {
     pagesProcessed: job.progress.pagesProcessed,
     imagesFound: job.progress.imagesFound,
   });
-  publishJobUpdate(job);
+  await publishAndPersist(job);
 };
 
 export const getJob = (id) => jobs.get(id);
