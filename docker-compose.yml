@@ -1,25 +1,29 @@
 services:
   backend:
-    build: ./backend
+    build: ./backend_py
+    restart: unless-stopped
     ports:
       - "4000:4000"
     environment:
-      - NODE_ENV=production
       - BACKEND_PORT=4000
       - DATA_PATH=/data
       - MAX_PAGES=50
       - MAX_DEPTH=3
       - PAGE_TIMEOUT_MS=30000
-      - TABLE_DETECTOR_URL=http://table-detector:8000
-      - TABLE_DETECTOR_TIMEOUT_MS=180000
       - TABLE_MIN_CONFIDENCE=0.5
     volumes:
       - app_data:/data
-    depends_on:
-      - table-detector
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   frontend:
     build: ./frontend
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
@@ -28,20 +32,6 @@ services:
       - NEXT_PUBLIC_API_BASE=/api/jobs
     depends_on:
       - backend
-
-  table-detector:
-    build: ./backend/table-detector
-    ports:
-      - "8000:8000"
-    environment:
-      - PYTHONUNBUFFERED=1
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
 
 volumes:
   app_data:

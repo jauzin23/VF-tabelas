@@ -7,4 +7,16 @@ coverage/
 *.log
 data/jobs/*
 !data/jobs/.gitkeep
+data/tarefas/*
+!data/tarefas/.gitkeep
+data/models/*
+!data/models/.gitkeep
 imagens-teste/*
+
+.venv*/
+__pycache__/
+*.pyc
+.crawlee/
+storage/
+
+/treino_ia/negativos/*
