@@ -1,36 +1,34 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Menu } from "lucide-react"
+} from "@/components/ui/dropdown-menu";
+import { Menu } from "lucide-react";
 
-import { ApiHealthIndicator } from "@/components/api-health-indicator"
-import { ApiConfigDialog } from "@/components/api-config-dialog"
 
 const itensNav = [
   { titulo: "Painel", href: "/" },
   { titulo: "Tarefas", href: "/tarefas" },
   { titulo: "Nova tarefa", href: "/tarefas/nova" },
   { titulo: "Detetar imagem", href: "/detetar" },
-]
+];
 
 function ehAtivo(pathname: string, href: string) {
-  if (href === "/") return pathname === "/"
-  return pathname === href || pathname.startsWith(`${href}/`)
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 export function SiteHeader() {
-  const pathname = usePathname()
+  const pathname = usePathname();
 
   return (
     <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -48,7 +46,7 @@ export function SiteHeader() {
         {/* Navegação horizontal (md+) */}
         <nav className="hidden items-center gap-1 md:flex">
           {itensNav.map((item) => {
-            const ativo = ehAtivo(pathname, item.href)
+            const ativo = ehAtivo(pathname, item.href);
             return (
               <Button
                 key={item.href}
@@ -62,7 +60,7 @@ export function SiteHeader() {
               >
                 <Link href={item.href}>{item.titulo}</Link>
               </Button>
-            )
+            );
           })}
         </nav>
 
@@ -87,17 +85,7 @@ export function SiteHeader() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <div className="ml-auto flex items-center gap-2">
-          <ApiHealthIndicator />
-          <ApiConfigDialog
-            trigger={
-              <Button size="sm" variant="outline">
-                Configurar API
-              </Button>
-            }
-          />
-        </div>
       </div>
     </header>
-  )
+  );
 }

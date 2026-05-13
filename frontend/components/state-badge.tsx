@@ -15,7 +15,7 @@ export function StateBadge({ estado, className }: Props) {
   let animar = false
 
   switch (estado) {
-    case "em_fila":
+    case "pendente":
       icone = Clock
       estilos = "bg-muted text-foreground"
       break

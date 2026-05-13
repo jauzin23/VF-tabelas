@@ -66,12 +66,13 @@ import {
 } from "@/components/ui/input-group"
 import { AspectRatio } from "@/components/ui/aspect-ratio"
 
+import { api } from "@/lib/api"
 import type { ImagemResultado } from "@/lib/types"
 import { nomeDominio, truncar } from "@/lib/format"
 
-type CampoOrdenacao = "pontuacao" | "etiqueta" | "largura" | "altura"
+type CampoOrdenacao = "tem_tabela"
 type Direcao = "asc" | "desc"
-type FiltroEtiqueta = "todas" | "table" | "outras"
+type FiltroEtiqueta = "todas" | "com_tabela" | "sem_tabela"
 
 const POR_PAGINA = 20
 
@@ -83,16 +84,10 @@ export function TaskResultsTable({ resultados }: Props) {
   const [pesquisa, setPesquisa] = useState("")
   const [filtroEtiqueta, setFiltroEtiqueta] =
     useState<FiltroEtiqueta>("todas")
-  const [pontuacaoMin, setPontuacaoMin] = useState(0)
-  const [campo, setCampo] = useState<CampoOrdenacao>("pontuacao")
+  const [campo, setCampo] = useState<CampoOrdenacao>("tem_tabela")
   const [direcao, setDirecao] = useState<Direcao>("desc")
   const [paginaAtual, setPaginaAtual] = useState(1)
 
-  const etiquetasUnicas = useMemo(() => {
-    const s = new Set<string>()
-    resultados.forEach((r) => r.etiqueta && s.add(r.etiqueta))
-    return Array.from(s)
-  }, [resultados])
 
   const filtradas = useMemo(() => {
     let lista = [...resultados]
@@ -105,45 +100,24 @@ export function TaskResultsTable({ resultados }: Props) {
           r.url_pagina,
           r.titulo_pagina,
           r.alt,
-          r.contexto_texto,
-          r.seccao,
-          r.etiqueta,
         ]
           .filter(Boolean)
           .some((s) => s.toLowerCase().includes(q)),
       )
     }
 
-    if (filtroEtiqueta === "table") {
-      lista = lista.filter((r) => r.etiqueta === "table")
-    } else if (filtroEtiqueta === "outras") {
-      lista = lista.filter((r) => r.etiqueta !== "table")
-    }
-
-    if (pontuacaoMin > 0) {
-      lista = lista.filter((r) => (r.pontuacao ?? 0) >= pontuacaoMin / 100)
+    if (filtroEtiqueta === "com_tabela") {
+      lista = lista.filter((r) => r.tem_tabela)
+    } else if (filtroEtiqueta === "sem_tabela") {
+      lista = lista.filter((r) => !r.tem_tabela)
     }
 
     lista.sort((a, b) => {
       let av: number | string = 0
       let bv: number | string = 0
-      switch (campo) {
-        case "pontuacao":
-          av = a.pontuacao ?? 0
-          bv = b.pontuacao ?? 0
-          break
-        case "etiqueta":
-          av = a.etiqueta ?? ""
-          bv = b.etiqueta ?? ""
-          break
-        case "largura":
-          av = a.largura ?? 0
-          bv = b.largura ?? 0
-          break
-        case "altura":
-          av = a.altura ?? 0
-          bv = b.altura ?? 0
-          break
+      if (campo === "tem_tabela") {
+        av = a.tem_tabela ? 1 : 0
+        bv = b.tem_tabela ? 1 : 0
       }
       if (av < bv) return direcao === "asc" ? -1 : 1
       if (av > bv) return direcao === "asc" ? 1 : -1
@@ -151,7 +125,7 @@ export function TaskResultsTable({ resultados }: Props) {
     })
 
     return lista
-  }, [resultados, pesquisa, filtroEtiqueta, pontuacaoMin, campo, direcao])
+  }, [resultados, pesquisa, filtroEtiqueta, campo, direcao])
 
   const totalPaginas = Math.max(1, Math.ceil(filtradas.length / POR_PAGINA))
   const paginaSegura = Math.min(paginaAtual, totalPaginas)
@@ -183,15 +157,11 @@ export function TaskResultsTable({ resultados }: Props) {
     if (filtradas.length === 0) return
     const cabecalhos = [
       "id",
-      "etiqueta",
-      "pontuacao",
-      "largura",
-      "altura",
+      "tem_tabela",
       "url_origem",
       "url_pagina",
       "titulo_pagina",
       "alt",
-      "seccao",
     ]
     const linhas = filtradas.map((r) =>
       cabecalhos
@@ -254,7 +224,7 @@ export function TaskResultsTable({ resultados }: Props) {
               <Search className="size-4" />
             </InputGroupAddon>
             <InputGroupInput
-              placeholder="Pesquisar URL, título, alt, contexto…"
+              placeholder="Pesquisar URL, título, alt…"
               value={pesquisa}
               onChange={(e) => {
                 setPesquisa(e.target.value)
@@ -274,40 +244,12 @@ export function TaskResultsTable({ resultados }: Props) {
               <SelectValue placeholder="Etiqueta" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todas">Todas as etiquetas</SelectItem>
-              <SelectItem value="table">Apenas tabelas</SelectItem>
-              <SelectItem value="outras">Excluir tabelas</SelectItem>
+              <SelectItem value="todas">Todos os resultados</SelectItem>
+              <SelectItem value="com_tabela">Com tabela</SelectItem>
+              <SelectItem value="sem_tabela">Sem tabela</SelectItem>
             </SelectContent>
           </Select>
-          <div className="flex w-full min-w-[180px] flex-col gap-1 lg:w-44">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Confiança mín.</span>
-              <span className="tabular-nums">{pontuacaoMin}%</span>
-            </div>
-            <Slider
-              min={0}
-              max={100}
-              step={5}
-              value={[pontuacaoMin]}
-              onValueChange={(v) => {
-                setPontuacaoMin(v[0] ?? 0)
-                setPaginaAtual(1)
-              }}
-            />
-          </div>
         </div>
-        {etiquetasUnicas.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">
-              Etiquetas detetadas:
-            </span>
-            {etiquetasUnicas.map((e) => (
-              <Badge key={e} variant="secondary" className="font-normal">
-                {e}
-              </Badge>
-            ))}
-          </div>
-        )}
       </CardHeader>
 
       <CardContent className="p-0">
@@ -319,34 +261,13 @@ export function TaskResultsTable({ resultados }: Props) {
               <TableHead>
                 <button
                   type="button"
-                  onClick={() => alternarOrdenacao("etiqueta")}
+                  onClick={() => alternarOrdenacao("tem_tabela")}
                   className="flex items-center gap-1 hover:text-foreground"
                 >
-                  Etiqueta
+                  Status
                   <ArrowUpDown className="size-3" />
                 </button>
               </TableHead>
-              <TableHead>
-                <button
-                  type="button"
-                  onClick={() => alternarOrdenacao("pontuacao")}
-                  className="flex items-center gap-1 hover:text-foreground"
-                >
-                  Confiança
-                  <ArrowUpDown className="size-3" />
-                </button>
-              </TableHead>
-              <TableHead className="hidden md:table-cell">
-                <button
-                  type="button"
-                  onClick={() => alternarOrdenacao("largura")}
-                  className="flex items-center gap-1 hover:text-foreground"
-                >
-                  Dimensões
-                  <ArrowUpDown className="size-3" />
-                </button>
-              </TableHead>
-              <TableHead className="hidden lg:table-cell">Secção</TableHead>
               <TableHead className="w-[1%] text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -368,35 +289,51 @@ export function TaskResultsTable({ resultados }: Props) {
                 </TableCell>
                 <TableCell>
                   <div className="flex min-w-0 flex-col gap-0.5">
-                    <span className="truncate font-medium">
-                      {r.titulo_pagina || nomeDominio(r.url_pagina)}
-                    </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {truncar(r.alt || r.url_origem, 70)}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-medium">
+                        {r.titulo_pagina || nomeDominio(r.url_pagina)}
+                      </span>
+                      {r.paginas_origem?.length > 1 && (
+                        <Badge variant="outline" className="h-4 px-1 text-[10px] bg-primary/5 text-primary border-primary/20">
+                          +{r.paginas_origem.length - 1}
+                        </Badge>
+                      )}
+                    </div>
+                    
+                    {r.paginas_origem && r.paginas_origem.length > 1 ? (
+                      <details className="mt-1 group">
+                        <summary className="cursor-pointer text-[10px] text-muted-foreground hover:text-foreground list-none flex items-center gap-1">
+                          <span className="group-open:rotate-90 transition-transform">▶</span>
+                          Ver todas as {r.paginas_origem.length} páginas
+                        </summary>
+                        <ul className="mt-1 space-y-0.5 pl-2 border-l ml-1 max-h-24 overflow-y-auto">
+                          {r.paginas_origem.map((p, i) => (
+                            <li key={i} className="truncate text-[10px]">
+                              <a href={p.url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                                {p.url}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    ) : (
+                      <span className="truncate text-xs text-muted-foreground">
+                        {truncar(r.alt || r.url_origem, 70)}
+                      </span>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell>
-                  <Badge
-                    variant={r.etiqueta === "table" ? "default" : "secondary"}
-                    className="font-normal"
-                  >
-                    {r.etiqueta === "table" && (
-                      <TableProperties className="size-3" />
+                    {r.tem_tabela ? (
+                      <Badge className="bg-emerald-600 hover:bg-emerald-700 font-medium text-white border-none">
+                        <TableProperties className="size-3 mr-1" />
+                        Tabela
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive" className="bg-rose-600 hover:bg-rose-700 font-medium text-white border-none">
+                        Não tabela
+                      </Badge>
                     )}
-                    {r.etiqueta || "—"}
-                  </Badge>
-                </TableCell>
-                <TableCell className="tabular-nums">
-                  {((r.pontuacao ?? 0) * 100).toFixed(1)}%
-                </TableCell>
-                <TableCell className="hidden md:table-cell tabular-nums text-muted-foreground">
-                  {r.largura}×{r.altura}
-                </TableCell>
-                <TableCell className="hidden lg:table-cell">
-                  <span className="truncate text-xs text-muted-foreground">
-                    {r.seccao || "—"}
-                  </span>
                 </TableCell>
                 <TableCell className="text-right">
                   <Button asChild variant="ghost" size="icon">
@@ -480,7 +417,6 @@ function PreviaImagem({ imagem }: { imagem: ImagemResultado }) {
             src={imagem.url_origem || "/placeholder.svg"}
             alt={imagem.alt || "Prévia"}
             referrerPolicy="no-referrer"
-            crossOrigin="anonymous"
             className="size-full object-cover"
             onError={(e) => {
               ;(e.currentTarget as HTMLImageElement).style.display = "none"
@@ -504,35 +440,39 @@ function PreviaImagem({ imagem }: { imagem: ImagemResultado }) {
               src={imagem.url_origem || "/placeholder.svg"}
               alt={imagem.alt || "Imagem extraída"}
               referrerPolicy="no-referrer"
-              crossOrigin="anonymous"
               className="h-full w-full object-contain"
             />
           </AspectRatio>
           <dl className="mt-4 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
-            <dt className="text-muted-foreground">Etiqueta</dt>
-            <dd className="font-medium">{imagem.etiqueta || "—"}</dd>
-            <dt className="text-muted-foreground">Confiança</dt>
-            <dd className="font-medium tabular-nums">
-              {((imagem.pontuacao ?? 0) * 100).toFixed(2)}%
+            <dt className="text-muted-foreground">Status</dt>
+            <dd className="font-medium">
+              {imagem.tem_tabela ? (
+                <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white border-none">Tabela</Badge>
+              ) : (
+                <Badge variant="destructive" className="bg-rose-600 hover:bg-rose-700 text-white border-none">Não tabela</Badge>
+              )}
             </dd>
-            <dt className="text-muted-foreground">Motivo</dt>
-            <dd className="font-medium">{imagem.motivo || "—"}</dd>
-            <dt className="text-muted-foreground">Dimensões</dt>
-            <dd className="font-medium tabular-nums">
-              {imagem.largura}×{imagem.altura}
+            <dt className="text-muted-foreground">Páginas ({imagem.paginas_origem?.length || 1})</dt>
+            <dd className="overflow-hidden">
+              <ScrollArea className={(imagem.paginas_origem?.length || 0) > 3 ? "h-32" : ""}>
+                <ul className="space-y-1">
+                  {(imagem.paginas_origem && imagem.paginas_origem.length > 0 ? imagem.paginas_origem : [{ url: imagem.url_pagina, titulo: imagem.titulo_pagina }]).map((p, i) => (
+                    <li key={i} className="truncate flex items-center gap-2">
+                      <a
+                        href={p.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary underline-offset-2 hover:underline text-xs truncate"
+                        title={p.titulo || p.url}
+                      >
+                        {p.url}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </ScrollArea>
             </dd>
-            <dt className="text-muted-foreground">Página</dt>
-            <dd className="truncate">
-              <a
-                href={imagem.url_pagina}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline-offset-2 hover:underline"
-              >
-                {imagem.url_pagina}
-              </a>
-            </dd>
-            <dt className="text-muted-foreground">Origem</dt>
+            <dt className="text-muted-foreground mt-1">Origem</dt>
             <dd className="truncate">
               <a
                 href={imagem.url_origem}
@@ -543,14 +483,6 @@ function PreviaImagem({ imagem }: { imagem: ImagemResultado }) {
                 {imagem.url_origem}
               </a>
             </dd>
-            {imagem.contexto_texto && (
-              <>
-                <dt className="text-muted-foreground">Contexto</dt>
-                <dd className="text-sm text-muted-foreground">
-                  {imagem.contexto_texto}
-                </dd>
-              </>
-            )}
           </dl>
         </ScrollArea>
       </DialogContent>

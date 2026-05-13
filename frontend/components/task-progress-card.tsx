@@ -40,46 +40,30 @@ export function TaskProgressCard({ tarefa }: Props) {
 
   const metricas = [
     {
-      titulo: "Páginas descobertas",
+      titulo: "Páginas Descobertas",
       valor: p.paginas_descobertas,
       icone: FileSearch,
     },
     {
-      titulo: "Páginas processadas",
+      titulo: "Páginas Processadas",
       valor: p.paginas_processadas,
       icone: Files,
     },
     {
-      titulo: "Imagens encontradas",
-      valor: p.imagens_encontradas,
-      icone: ImageIcon,
-    },
-    {
-      titulo: "Imagens únicas",
-      valor: p.imagens_unicas,
-      icone: ImagePlus,
-    },
-    {
-      titulo: "Imagens analisadas",
-      valor: p.imagens_analisadas,
-      icone: ScanSearch,
-    },
-    {
-      titulo: "Tabelas detetadas",
-      valor: p.tabelas_detetadas,
-      icone: TableProperties,
-      destaque: true,
-    },
-    {
-      titulo: "Paginação total",
-      valor: p.paginacao_total,
-      icone: Layers,
-    },
-    {
-      titulo: "Imagens em lote",
+      titulo: "Imagens (Bulk)",
       valor: p.imagens_bulk,
       icone: Sparkles,
     },
+    {
+      titulo: "Imagens Únicas",
+      valor: p.imagens_unicas === 0 ? "a carregar" : p.imagens_unicas === undefined ? "a carregar" : p.imagens_unicas,
+      icone: ImagePlus, 
+    },
+    {
+      titulo: "Imagens Analisadas",
+      valor: p.imagens_analisadas,
+      icone: ScanSearch,
+    }
   ]
 
   return (
@@ -94,12 +78,12 @@ export function TaskProgressCard({ tarefa }: Props) {
         <CardContent className="grid gap-6">
           <BarraProgresso
             rotulo="Páginas processadas"
-            descricao={`${feitas} de ${totalPaginas || "—"}`}
+            descricao={`${feitas} de ${totalPaginas || "-"}`}
             valor={percentPaginas}
           />
           <BarraProgresso
             rotulo="Imagens analisadas"
-            descricao={`${analisadas} de ${totalImagens || "—"}`}
+            descricao={`${analisadas} de ${totalImagens || "-"}`}
             valor={percentAnalise}
           />
           {tarefa.url_atual && (
@@ -118,7 +102,7 @@ export function TaskProgressCard({ tarefa }: Props) {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
         {metricas.map((m) => {
           const Icone = m.icone
           return (

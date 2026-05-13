@@ -36,12 +36,12 @@ import type { OpcoesTarefa } from "@/lib/types"
 // Apenas opções que fazem sentido expor ao utilizador.
 // Os ajustes técnicos (timeout por página, concorrência de scraping/análise)
 // usam os valores definidos no servidor (.env) e não são expostos no UI.
+// Para URLs em lote, as opções são desativadas (processamento sequencial).
 type OpcoesUI = Required<
   Pick<
     OpcoesTarefa,
     | "maxPages"
     | "maxDepth"
-    | "maxJobSeconds"
     | "seguirPaginacao"
     | "seguirDetalhe"
   >
@@ -50,7 +50,6 @@ type OpcoesUI = Required<
 const PADRAO: OpcoesUI = {
   maxPages: 5,
   maxDepth: 2,
-  maxJobSeconds: 600,
   seguirPaginacao: true,
   seguirDetalhe: true,
 }
@@ -96,7 +95,7 @@ export function TaskCreateForm() {
           return
         }
         const t = await api.criarTarefa(url, opcoes)
-        adicionar({ id: t.id, url_alvo: t.url_alvo, criado_em: t.criado_em })
+        adicionar()
         toast.success("Tarefa criada", {
           description: "A redirecionar para o acompanhamento…",
         })
@@ -117,11 +116,7 @@ export function TaskCreateForm() {
           return
         }
         const t = await api.criarTarefaLote(lista, opcoes)
-        adicionar({
-          id: t.id,
-          url_alvo: `${lista.length} URLs em lote`,
-          criado_em: t.criado_em,
-        })
+        adicionar()
         toast.success("Tarefa em lote criada", {
           description: `${lista.length} URLs enviados.`,
         })
@@ -138,7 +133,7 @@ export function TaskCreateForm() {
   const urlsParsed = parseUrls(urlsTexto)
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
+    <div className="gap-6">
       <Card className="lg:col-span-2">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -177,10 +172,6 @@ export function TaskCreateForm() {
                   autoComplete="off"
                   spellCheck={false}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Endpoint:{" "}
-                  <code className="font-mono">POST /api/tarefas</code>
-                </p>
               </div>
             </TabsContent>
 
@@ -202,28 +193,23 @@ export function TaskCreateForm() {
                     {urlsParsed.length} URL{urlsParsed.length === 1 ? "" : "s"}
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Endpoint:{" "}
-                  <code className="font-mono">
-                    POST /api/paginacao-multurls
-                  </code>
-                </p>
               </div>
             </TabsContent>
           </Tabs>
 
           <Separator className="my-6" />
 
-          <Accordion type="single" collapsible defaultValue="opcoes">
-            <AccordionItem value="opcoes" className="border-none">
-              <AccordionTrigger className="text-sm font-medium">
-                <span className="flex items-center gap-2">
-                  <Settings2 className="size-4" />
-                  Opções de execução
-                </span>
-              </AccordionTrigger>
-              <AccordionContent>
-                <div className="grid gap-6 pt-2">
+          {modo === "unico" && (
+            <Accordion type="single" collapsible defaultValue="opcoes">
+              <AccordionItem value="opcoes" className="border-none">
+                <AccordionTrigger className="text-sm font-medium pt-0">
+                  <span className="flex items-center gap-2">
+                    <Settings2 className="size-4" />
+                    Opções de execução
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="grid gap-6 pt-2">
                   <SliderField
                     id="maxPages"
                     rotulo="Máximo de páginas por URL"
@@ -237,23 +223,12 @@ export function TaskCreateForm() {
                   <SliderField
                     id="maxDepth"
                     rotulo="Profundidade máxima"
-                    ajuda="1 = apenas a homepage"
-                    min={1}
-                    max={6}
+                    ajuda="0 = sem limite"
+                    min={0}
+                    max={50}
                     step={1}
                     valor={opcoes.maxDepth}
                     onChange={(v) => actualizar("maxDepth", v)}
-                  />
-                  <SliderField
-                    id="maxJobSeconds"
-                    rotulo="Tempo limite total"
-                    ajuda="duração máxima de toda a tarefa"
-                    min={60}
-                    max={3600}
-                    step={30}
-                    valor={opcoes.maxJobSeconds}
-                    onChange={(v) => actualizar("maxJobSeconds", v)}
-                    formatar={(v) => `${Math.round(v / 60)} min`}
                   />
 
                   <Separator />
@@ -291,7 +266,8 @@ export function TaskCreateForm() {
                 </div>
               </AccordionContent>
             </AccordionItem>
-          </Accordion>
+            </Accordion>
+          )}
 
           <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button
@@ -322,47 +298,6 @@ export function TaskCreateForm() {
           </div>
         </CardContent>
       </Card>
-
-      <div className="flex flex-col gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Resumo</CardTitle>
-            <CardDescription>Configuração atual da tarefa.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-2 gap-y-2 text-sm">
-              <Item rotulo="Modo">
-                {modo === "unico" ? "URL único" : "Lote de URLs"}
-              </Item>
-              <Item rotulo="URLs">
-                {modo === "unico" ? (url ? 1 : 0) : urlsParsed.length}
-              </Item>
-              <Item rotulo="Páginas máx.">
-                {opcoes.maxPages === 0 ? "Ilimitado" : opcoes.maxPages}
-              </Item>
-              <Item rotulo="Profundidade">{opcoes.maxDepth}</Item>
-              <Item rotulo="Tempo limite">
-                {Math.round(opcoes.maxJobSeconds / 60)} min
-              </Item>
-              <Item rotulo="Paginação">
-                {opcoes.seguirPaginacao ? "Sim" : "Não"}
-              </Item>
-              <Item rotulo="Detalhe">
-                {opcoes.seguirDetalhe ? "Sim" : "Não"}
-              </Item>
-            </dl>
-          </CardContent>
-        </Card>
-
-        <Alert>
-          <Sparkles className="size-4" />
-          <AlertTitle>Dica</AlertTitle>
-          <AlertDescription>
-            Para sítios grandes, começa com 5 páginas e profundidade 2. Aumenta
-            apenas se necessário para evitar tempos excessivos.
-          </AlertDescription>
-        </Alert>
-      </div>
     </div>
   )
 }

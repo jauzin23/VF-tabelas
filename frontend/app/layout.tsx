@@ -12,7 +12,7 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "VF-Tabelas — Painel de Extração",
+  title: "VF-Tabelas - Painel de Extração",
   description:
     "Painel para gestão de tarefas de extração e deteção de tabelas em páginas web.",
   generator: "v0.app",

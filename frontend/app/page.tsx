@@ -32,7 +32,7 @@ export default function PaginaInicial() {
 
       <DashboardStats />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-1 grid-rows-2">
         <Card className="md:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -47,26 +47,6 @@ export default function PaginaInicial() {
             <Button asChild className="w-full">
               <Link href="/tarefas/nova">
                 Criar tarefa
-                <ArrowRight className="size-4" />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="md:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ListChecks className="size-4 text-primary" />
-              Tarefas em curso
-            </CardTitle>
-            <CardDescription>
-              Consulta o estado e os resultados das tuas tarefas.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild variant="outline" className="w-full">
-              <Link href="/tarefas">
-                Ver todas
                 <ArrowRight className="size-4" />
               </Link>
             </Button>

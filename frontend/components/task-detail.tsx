@@ -41,6 +41,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 import { TaskProgressCard } from "@/components/task-progress-card"
 import { TaskResultsTable } from "@/components/task-results-table"
@@ -85,12 +91,14 @@ export function TaskDetail({ id }: Props) {
   useEffect(() => {
     if (!tarefa) return
     if (tarefa.estado === "concluido" || tarefa.estado === "falhou") {
-      if (sseRef.current) {
-        sseRef.current.close()
-        sseRef.current = null
-        setLigadoSSE(false)
+      if (!tarefa.esta_a_correr) {
+         if (sseRef.current) {
+            sseRef.current.close()
+            sseRef.current = null
+            setLigadoSSE(false)
+          }
+          return
       }
-      return
     }
     if (sseRef.current) return
     try {
@@ -118,7 +126,7 @@ export function TaskDetail({ id }: Props) {
         setLigadoSSE(false)
       }
     }
-  }, [id, tarefa?.estado, tarefa])
+  }, [id, tarefa?.estado, tarefa?.esta_a_correr])
 
   async function apagar() {
     try {
@@ -126,7 +134,7 @@ export function TaskDetail({ id }: Props) {
     } catch {
       /* ignore */
     }
-    remover(id)
+    remover()
     toast.success("Tarefa apagada")
     router.push("/tarefas")
   }
@@ -162,34 +170,6 @@ export function TaskDetail({ id }: Props) {
             <RefreshCw className="size-4" />
             Tentar novamente
           </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="ghost">
-                <Trash2 className="size-4" />
-                Remover da lista local
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Remover tarefa?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Esta operação remove apenas a referência local. Se o backend
-                  ainda tiver a tarefa, ela permanecerá lá.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => {
-                    remover(id)
-                    router.push("/tarefas")
-                  }}
-                >
-                  Remover
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
         </div>
       </div>
     )
@@ -199,114 +179,124 @@ export function TaskDetail({ id }: Props) {
     ? tarefa.urls_alvo
     : [tarefa.url_alvo]
   const ehLote = (tarefa.urls_alvo?.length || 0) > 1
+  const running = tarefa.esta_a_correr
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <div className="flex flex-col gap-3">
-        <Button asChild variant="ghost" size="sm" className="w-fit -ml-2">
-          <Link href="/tarefas">
-            <ArrowLeft className="size-4" />
-            Voltar às tarefas
-          </Link>
-        </Button>
+    <TooltipProvider>
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+        <div className="flex flex-col gap-3">
+          <Button asChild variant="ghost" size="sm" className="w-fit -ml-2">
+            <Link href="/tarefas">
+              <ArrowLeft className="size-4" />
+              Voltar às tarefas
+            </Link>
+          </Button>
 
-        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold tracking-tight md:text-2xl truncate">
-                {ehLote
-                  ? `Lote com ${urls.length} URLs`
-                  : nomeDominio(tarefa.url_alvo)}
-              </h1>
-              <StateBadge estado={tarefa.estado} />
-              {ligadoSSE && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-chart-2/15 px-2 py-0.5 text-xs font-medium text-chart-2">
-                  <Zap className="size-3" />
-                  Em direto
-                </span>
-              )}
+          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-semibold tracking-tight md:text-2xl truncate">
+                  {ehLote
+                    ? `Lote com ${urls.length} URLs`
+                    : nomeDominio(tarefa.url_alvo)}
+                </h1>
+                <StateBadge estado={tarefa.estado} />
+                {running && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-600 animate-pulse">
+                    <RefreshCw className="size-3 animate-spin" />
+                    A processar...
+                  </span>
+                )}
+                {ligadoSSE && !running && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-chart-2/15 px-2 py-0.5 text-xs font-medium text-chart-2">
+                    <Zap className="size-3" />
+                    Em direto
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 truncate text-sm text-muted-foreground">
+                {ehLote ? `${urls.length} URLs em processamento` : tarefa.url_alvo}
+              </p>
             </div>
-            <p className="mt-1 truncate text-sm text-muted-foreground">
-              {ehLote ? `${urls.length} URLs em processamento` : tarefa.url_alvo}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={copiarId}>
-              <Copy className="size-4" />
-              <span className="hidden sm:inline">Copiar ID</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={carregar}
-              disabled={aCarregar}
-            >
-              <RefreshCw className="size-4" />
-              <span className="hidden sm:inline">Actualizar</span>
-            </Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Trash2 className="size-4" />
-                  <span className="hidden sm:inline">Apagar</span>
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Apagar esta tarefa?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    A tarefa será removida do backend e da lista local. Os
-                    resultados serão descartados.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={apagar}
-                    className="bg-destructive text-white hover:bg-destructive/90"
-                  >
-                    Apagar
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={copiarId}>
+                <Copy className="size-4" />
+                <span className="hidden sm:inline">Copiar ID</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={carregar}
+                disabled={aCarregar}
+              >
+                <RefreshCw className="size-4" />
+                <span className="hidden sm:inline">Actualizar</span>
+              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Trash2 className="size-4" />
+                    <span className="hidden sm:inline">Apagar</span>
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Apagar esta tarefa?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      A tarefa será removida do servidor permanentemente. 
+                      Os resultados serão descartados.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={apagar}
+                      className="bg-destructive text-white hover:bg-destructive/90"
+                    >
+                      Apagar
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           </div>
         </div>
+
+        {tarefa.erro && (
+          <Alert variant="destructive">
+            <AlertTriangle className="size-4" />
+            <AlertTitle>Erro reportado pelo backend</AlertTitle>
+            <AlertDescription>{tarefa.erro}</AlertDescription>
+          </Alert>
+        )}
+
+        <Tabs defaultValue="progresso">
+          <TabsList>
+            <TabsTrigger value="progresso">Progresso</TabsTrigger>
+            <TabsTrigger value="resultados">
+              Resultados
+              <span className="ml-1 text-xs tabular-nums text-muted-foreground">
+                ({tarefa.resultados?.length ?? 0})
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="config">Configuração</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="progresso" className="mt-4">
+            <TaskProgressCard tarefa={tarefa} />
+            
+          </TabsContent>
+
+          <TabsContent value="resultados" className="mt-4">
+            <TaskResultsTable resultados={tarefa.resultados ?? []} />
+          </TabsContent>
+
+          <TabsContent value="config" className="mt-4">
+            <ConfiguracaoCard tarefa={tarefa} urls={urls} />
+          </TabsContent>
+        </Tabs>
       </div>
-
-      {tarefa.erro && (
-        <Alert variant="destructive">
-          <AlertTriangle className="size-4" />
-          <AlertTitle>Erro reportado pelo backend</AlertTitle>
-          <AlertDescription>{tarefa.erro}</AlertDescription>
-        </Alert>
-      )}
-
-      <Tabs defaultValue="progresso">
-        <TabsList>
-          <TabsTrigger value="progresso">Progresso</TabsTrigger>
-          <TabsTrigger value="resultados">
-            Resultados
-            <span className="ml-1 text-xs tabular-nums text-muted-foreground">
-              ({tarefa.resultados?.length ?? 0})
-            </span>
-          </TabsTrigger>
-          <TabsTrigger value="config">Configuração</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="progresso" className="mt-4">
-          <TaskProgressCard tarefa={tarefa} />
-        </TabsContent>
-
-        <TabsContent value="resultados" className="mt-4">
-          <TaskResultsTable resultados={tarefa.resultados ?? []} />
-        </TabsContent>
-
-        <TabsContent value="config" className="mt-4">
-          <ConfiguracaoCard tarefa={tarefa} urls={urls} />
-        </TabsContent>
-      </Tabs>
-    </div>
+    </TooltipProvider>
   )
 }
 
@@ -358,26 +348,26 @@ function ConfiguracaoCard({
             <Linha rotulo="Páginas máx.">
               {tarefa.opcoes.maxPages === 0
                 ? "Ilimitado"
-                : tarefa.opcoes.maxPages ?? "—"}
+                : tarefa.opcoes.maxPages ?? "-"}
             </Linha>
             <Linha rotulo="Profundidade">
-              {tarefa.opcoes.maxDepth ?? "—"}
+              {tarefa.opcoes.maxDepth ?? "-"}
             </Linha>
             <Linha rotulo="Concorrência">
-              {tarefa.opcoes.concurrency ?? "—"}
+              {tarefa.opcoes.concurrency ?? "-"}
             </Linha>
             <Linha rotulo="Análise">
-              {tarefa.opcoes.analysisConcurrency ?? "—"}
+              {tarefa.opcoes.analysisConcurrency ?? "-"}
             </Linha>
             <Linha rotulo="Timeout pág.">
               {tarefa.opcoes.pageTimeoutMs
                 ? `${(tarefa.opcoes.pageTimeoutMs / 1000).toFixed(0)} s`
-                : "—"}
+                : "-"}
             </Linha>
             <Linha rotulo="Timeout total">
               {tarefa.opcoes.maxJobSeconds
                 ? `${Math.round(tarefa.opcoes.maxJobSeconds / 60)} min`
-                : "—"}
+                : "-"}
             </Linha>
             <Linha rotulo="Paginação">
               {tarefa.opcoes.seguirPaginacao ? "Sim" : "Não"}

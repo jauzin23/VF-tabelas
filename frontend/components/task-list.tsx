@@ -20,7 +20,6 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -62,10 +61,16 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 import { StateBadge } from "@/components/state-badge"
 import { api } from "@/lib/api"
-import { useTarefasLocais, type TarefaLocal } from "@/lib/store"
+import { useTarefasLocais } from "@/lib/store"
 import type { EstadoTarefa, Tarefa } from "@/lib/types"
 import { formatarDataCurta, nomeDominio, truncar } from "@/lib/format"
 
@@ -78,8 +83,8 @@ interface Props {
 }
 
 export function TaskList({ limite, compacto }: Props) {
-  const { tarefas: locais, remover } = useTarefasLocais()
-  const [dados, setDados] = useState<Record<string, Tarefa | null>>({})
+  const { lastUpdate, remover } = useTarefasLocais()
+  const [tarefas, setTarefas] = useState<Tarefa[]>([])
   const [aCarregar, setACarregar] = useState(true)
   const [aActualizar, setAActualizar] = useState(false)
 
@@ -96,75 +101,55 @@ export function TaskList({ limite, compacto }: Props) {
     async (silencioso = false) => {
       if (!silencioso) setACarregar(true)
       else setAActualizar(true)
-      const entradas = await Promise.all(
-        locais.map(async (t) => {
-          try {
-            const r = await api.listarTarefa(t.id)
-            return [t.id, r] as const
-          } catch {
-            return [t.id, null] as const
-          }
-        }),
-      )
-      setDados(Object.fromEntries(entradas))
-      setACarregar(false)
-      setAActualizar(false)
+      try {
+        const r = await api.listarTarefas()
+        setTarefas(r)
+      } catch (e) {
+        console.error("Erro ao carregar tarefas:", e)
+        toast.error("Não foi possível carregar as tarefas do backend")
+      } finally {
+        setACarregar(false)
+        setAActualizar(false)
+      }
     },
-    [locais],
+    [],
   )
 
   useEffect(() => {
     carregar()
-  }, [carregar])
+  }, [carregar, lastUpdate])
 
-  // Polling apenas para tarefas em curso
-  useEffect(() => {
-    const temEmCurso = Object.values(dados).some(
-      (t) => t && (t.estado === "em_execucao" || t.estado === "em_fila"),
-    )
-    if (!temEmCurso) return
-    const id = setInterval(() => carregar(true), 5000)
-    return () => clearInterval(id)
-  }, [dados, carregar])
 
   async function apagar(id: string) {
     try {
       await api.apagarTarefa(id)
       toast.success("Tarefa apagada")
+      remover() // Trigger update
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro"
       toast.error("Não foi possível apagar no backend", { description: msg })
     }
-    remover(id)
   }
 
   const linhas = useMemo(() => {
-    type Linha = {
-      local: TarefaLocal
-      tarefa: Tarefa | null
-    }
-    let lista: Linha[] = locais.map((l) => ({
-      local: l,
-      tarefa: dados[l.id] ?? null,
-    }))
+    let lista = [...tarefas]
 
     if (pesquisa.trim()) {
       const q = pesquisa.trim().toLowerCase()
-      lista = lista.filter(({ local, tarefa }) => {
+      lista = lista.filter((tarefa) => {
         const urls = [
-          local.url_alvo,
-          tarefa?.url_alvo,
-          ...(tarefa?.urls_alvo ?? []),
+          tarefa.url_alvo,
+          ...(tarefa.urls_alvo ?? []),
         ]
           .filter(Boolean)
           .join(" ")
           .toLowerCase()
-        return urls.includes(q) || local.id.toLowerCase().includes(q)
+        return urls.includes(q) || tarefa.id.toLowerCase().includes(q)
       })
     }
 
     if (filtroEstado !== "todos") {
-      lista = lista.filter(({ tarefa }) => tarefa?.estado === filtroEstado)
+      lista = lista.filter((tarefa) => tarefa.estado === filtroEstado)
     }
 
     lista.sort((a, b) => {
@@ -172,16 +157,16 @@ export function TaskList({ limite, compacto }: Props) {
       let bv: string | number = 0
       switch (campoOrdenacao) {
         case "criado_em":
-          av = a.tarefa?.criado_em || a.local.criado_em
-          bv = b.tarefa?.criado_em || b.local.criado_em
+          av = a.criado_em
+          bv = b.criado_em
           break
         case "estado":
-          av = a.tarefa?.estado || ""
-          bv = b.tarefa?.estado || ""
+          av = a.estado
+          bv = b.estado
           break
         case "progresso": {
-          const ap = a.tarefa?.progresso
-          const bp = b.tarefa?.progresso
+          const ap = a.progresso
+          const bp = b.progresso
           av =
             ap && ap.paginas_descobertas > 0
               ? ap.paginas_processadas / ap.paginas_descobertas
@@ -193,8 +178,8 @@ export function TaskList({ limite, compacto }: Props) {
           break
         }
         case "url":
-          av = a.tarefa?.url_alvo || a.local.url_alvo
-          bv = b.tarefa?.url_alvo || b.local.url_alvo
+          av = a.url_alvo
+          bv = b.url_alvo
           break
       }
       if (av < bv) return direcaoOrdenacao === "asc" ? -1 : 1
@@ -203,7 +188,7 @@ export function TaskList({ limite, compacto }: Props) {
     })
 
     return limite ? lista.slice(0, limite) : lista
-  }, [locais, dados, pesquisa, filtroEstado, campoOrdenacao, direcaoOrdenacao, limite])
+  }, [tarefas, pesquisa, filtroEstado, campoOrdenacao, direcaoOrdenacao, limite])
 
   function alternarOrdenacao(campo: CampoOrdenacao) {
     if (campoOrdenacao === campo) {
@@ -214,224 +199,226 @@ export function TaskList({ limite, compacto }: Props) {
     }
   }
 
-  if (aCarregar && locais.length === 0) {
-    return <SemTarefas />
+  if (aCarregar && tarefas.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <RefreshCw className="mx-auto size-8 animate-spin text-muted-foreground" />
+          <p className="mt-2 text-sm text-muted-foreground">A carregar tarefas...</p>
+        </CardContent>
+      </Card>
+    )
   }
 
-  if (locais.length === 0) {
+  if (tarefas.length === 0 && !pesquisa && filtroEstado === "todos") {
     return <SemTarefas />
   }
 
   return (
-    <Card>
-      {!compacto && (
-        <CardHeader className="flex flex-col gap-3 border-b sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-base font-semibold">
-            {linhas.length} {linhas.length === 1 ? "tarefa" : "tarefas"}
-          </CardTitle>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <InputGroup className="sm:w-64">
-              <InputGroupAddon>
-                <Search className="size-4" />
-              </InputGroupAddon>
-              <InputGroupInput
-                placeholder="Pesquisar URL ou ID…"
-                value={pesquisa}
-                onChange={(e) => setPesquisa(e.target.value)}
-              />
-            </InputGroup>
-            <Select
-              value={filtroEstado}
-              onValueChange={(v) =>
-                setFiltroEstado(v as EstadoTarefa | "todos")
-              }
-            >
-              <SelectTrigger className="sm:w-44">
-                <Filter className="size-4" />
-                <SelectValue placeholder="Estado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos os estados</SelectItem>
-                <SelectItem value="em_fila">Em fila</SelectItem>
-                <SelectItem value="em_execucao">A executar</SelectItem>
-                <SelectItem value="concluido">Concluída</SelectItem>
-                <SelectItem value="falhou">Falhou</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => carregar()}
-              disabled={aActualizar}
-              aria-label="Actualizar"
-            >
-              <RefreshCw
-                className={`size-4 ${aActualizar ? "animate-spin" : ""}`}
-              />
-            </Button>
-          </div>
-        </CardHeader>
-      )}
-      <CardContent className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="min-w-[220px]">
-                <button
-                  type="button"
-                  onClick={() => alternarOrdenacao("url")}
-                  className="flex items-center gap-1 hover:text-foreground"
-                >
-                  URL alvo
-                  <ArrowUpDown className="size-3" />
-                </button>
-              </TableHead>
-              <TableHead>
-                <button
-                  type="button"
-                  onClick={() => alternarOrdenacao("estado")}
-                  className="flex items-center gap-1 hover:text-foreground"
-                >
-                  Estado
-                  <ArrowUpDown className="size-3" />
-                </button>
-              </TableHead>
-              <TableHead className="min-w-[160px]">
-                <button
-                  type="button"
-                  onClick={() => alternarOrdenacao("progresso")}
-                  className="flex items-center gap-1 hover:text-foreground"
-                >
-                  Progresso
-                  <ArrowUpDown className="size-3" />
-                </button>
-              </TableHead>
-              <TableHead className="hidden md:table-cell">Imagens</TableHead>
-              <TableHead className="hidden md:table-cell">Tabelas</TableHead>
-              <TableHead className="hidden lg:table-cell">
-                <button
-                  type="button"
-                  onClick={() => alternarOrdenacao("criado_em")}
-                  className="flex items-center gap-1 hover:text-foreground"
-                >
-                  Criada
-                  <ArrowUpDown className="size-3" />
-                </button>
-              </TableHead>
-              <TableHead className="w-[1%] text-right">Ações</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {linhas.length === 0 && (
+    <TooltipProvider>
+      <Card>
+        {!compacto && (
+          <CardHeader className="flex flex-col gap-3 border-b sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="text-base font-semibold">
+              {linhas.length} {linhas.length === 1 ? "tarefa" : "tarefas"}
+            </CardTitle>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <InputGroup className="sm:w-64">
+                <InputGroupAddon>
+                  <Search className="size-4" />
+                </InputGroupAddon>
+                <InputGroupInput
+                  placeholder="Pesquisar URL ou ID…"
+                  value={pesquisa}
+                  onChange={(e) => setPesquisa(e.target.value)}
+                />
+              </InputGroup>
+              <Select
+                value={filtroEstado}
+                onValueChange={(v) =>
+                  setFiltroEstado(v as EstadoTarefa | "todos")
+                }
+              >
+                <SelectTrigger className="sm:w-44">
+                  <Filter className="size-4" />
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos os estados</SelectItem>
+                  <SelectItem value="pendente">Pendente</SelectItem>
+                  <SelectItem value="em_execucao">A executar</SelectItem>
+                  <SelectItem value="concluido">Concluída</SelectItem>
+                  <SelectItem value="falhou">Falhou</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => carregar()}
+                disabled={aActualizar}
+                aria-label="Actualizar"
+              >
+                <RefreshCw
+                  className={`size-4 ${aActualizar ? "animate-spin" : ""}`}
+                />
+              </Button>
+            </div>
+          </CardHeader>
+        )}
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                  Nenhuma tarefa corresponde aos filtros.
-                </TableCell>
+                <TableHead className="min-w-[220px]">
+                  <button
+                    type="button"
+                    onClick={() => alternarOrdenacao("url")}
+                    className="flex items-center gap-1 hover:text-foreground"
+                  >
+                    URL alvo
+                    <ArrowUpDown className="size-3" />
+                  </button>
+                </TableHead>
+                <TableHead>
+                  <button
+                    type="button"
+                    onClick={() => alternarOrdenacao("estado")}
+                    className="flex items-center gap-1 hover:text-foreground"
+                  >
+                    Estado
+                    <ArrowUpDown className="size-3" />
+                  </button>
+                </TableHead>
+                <TableHead className="min-w-[160px]">
+                  <button
+                    type="button"
+                    onClick={() => alternarOrdenacao("progresso")}
+                    className="flex items-center gap-1 hover:text-foreground"
+                  >
+                    Progresso
+                    <ArrowUpDown className="size-3" />
+                  </button>
+                </TableHead>
+                <TableHead className="hidden md:table-cell">Imagens</TableHead>
+                <TableHead className="hidden md:table-cell">Tabelas</TableHead>
+                <TableHead className="hidden lg:table-cell">
+                  <button
+                    type="button"
+                    onClick={() => alternarOrdenacao("criado_em")}
+                    className="flex items-center gap-1 hover:text-foreground"
+                  >
+                    Criada
+                    <ArrowUpDown className="size-3" />
+                  </button>
+                </TableHead>
+                <TableHead className="w-[1%] text-right">Ações</TableHead>
               </TableRow>
-            )}
-            {linhas.map(({ local, tarefa }) => {
-              const progresso = tarefa?.progresso
-              const total = progresso?.paginas_descobertas ?? 0
-              const feitas = progresso?.paginas_processadas ?? 0
-              const percent = total > 0 ? Math.round((feitas / total) * 100) : 0
-              const urlExibir =
-                tarefa?.urls_alvo && tarefa.urls_alvo.length > 1
-                  ? `${tarefa.urls_alvo.length} URLs em lote`
-                  : tarefa?.url_alvo || local.url_alvo
+            </TableHeader>
+            <TableBody>
+              {linhas.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                    Nenhuma tarefa corresponde aos filtros.
+                  </TableCell>
+                </TableRow>
+              )}
+              {linhas.map((tarefa) => {
+                const progresso = tarefa.progresso
+                const total = progresso?.paginas_descobertas ?? 0
+                const feitas = progresso?.paginas_processadas ?? 0
+                const percent = total > 0 ? Math.round((feitas / total) * 100) : 0
+                const urlExibir =
+                  tarefa.urls_alvo && tarefa.urls_alvo.length > 1
+                    ? `${tarefa.urls_alvo.length} URLs em lote`
+                    : tarefa.url_alvo
+                const running = tarefa.esta_a_correr
 
-              return (
-                <TableRow key={local.id} className="group">
-                  <TableCell className="font-medium">
-                    <Link
-                      href={`/tarefas/${local.id}`}
-                      className="flex flex-col gap-0.5 hover:underline"
-                    >
-                      <span className="truncate max-w-[280px]">
-                        {truncar(urlExibir, 50)}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {tarefa?.urls_alvo && tarefa.urls_alvo.length > 1
-                          ? "Tarefa em lote"
-                          : nomeDominio(urlExibir)}
-                      </span>
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    {tarefa ? (
+                return (
+                  <TableRow key={tarefa.id} className="group">
+                    <TableCell className="font-medium">
+                      <Link
+                        href={`/tarefas/${tarefa.id}`}
+                        className="flex flex-col gap-0.5 hover:underline"
+                      >
+                        <span className="truncate max-w-[280px]">
+                          {truncar(urlExibir, 50)}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {tarefa.urls_alvo && tarefa.urls_alvo.length > 1
+                            ? "Tarefa em lote"
+                            : nomeDominio(urlExibir)}
+                        </span>
+                      </Link>
+                    </TableCell>
+                    <TableCell>
                       <StateBadge estado={tarefa.estado} />
-                    ) : (
-                      <Skeleton className="h-5 w-20" />
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {tarefa ? (
+                    </TableCell>
+                    <TableCell>
                       <div className="flex flex-col gap-1">
                         <Progress value={percent} className="h-1.5" />
                         <span className="text-xs text-muted-foreground">
-                          {feitas}/{total || "—"} páginas
+                          {feitas}/{total || "-"} páginas
                         </span>
                       </div>
-                    ) : (
-                      <Skeleton className="h-2 w-24" />
-                    )}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell tabular-nums">
-                    {tarefa?.progresso.imagens_encontradas ?? "—"}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell tabular-nums">
-                    {tarefa?.progresso.tabelas_detetadas ?? "—"}
-                  </TableCell>
-                  <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">
-                    {formatarDataCurta(tarefa?.criado_em || local.criado_em)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button asChild variant="ghost" size="icon">
-                        <Link
-                          href={`/tarefas/${local.id}`}
-                          aria-label="Abrir tarefa"
-                        >
-                          <ExternalLink className="size-4" />
-                        </Link>
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label="Apagar tarefa"
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell tabular-nums">
+                      {tarefa.progresso.imagens_encontradas ?? "-"}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell tabular-nums">
+                      {tarefa.progresso.tabelas_detetadas ?? "-"}
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">
+                      {formatarDataCurta(tarefa.criado_em)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button asChild variant="ghost" size="icon">
+                          <Link
+                            href={`/tarefas/${tarefa.id}`}
+                            aria-label="Abrir tarefa"
                           >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Apagar tarefa?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Esta operação remove a tarefa do backend e da lista
-                              local. Os resultados serão descartados.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => apagar(local.id)}
-                              className="bg-destructive text-white hover:bg-destructive/90"
+                            <ExternalLink className="size-4" />
+                          </Link>
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label="Apagar tarefa"
                             >
-                              Apagar
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Apagar tarefa?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Esta operação remove a tarefa do backend permanentemente. 
+                                Os resultados serão descartados.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => apagar(tarefa.id)}
+                                className="bg-destructive text-white hover:bg-destructive/90"
+                              >
+                                Apagar
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </TooltipProvider>
   )
 }
 
@@ -444,7 +431,7 @@ function SemTarefas() {
         </EmptyMedia>
         <EmptyTitle>Sem tarefas</EmptyTitle>
         <EmptyDescription>
-          Ainda não criaste nenhuma tarefa de extração neste navegador.
+          Ainda não foram criadas tarefas de extração neste servidor.
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>

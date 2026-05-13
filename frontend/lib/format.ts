@@ -1,7 +1,7 @@
 import type { EstadoTarefa } from "./types"
 
 export function formatarData(iso: string | null | undefined): string {
-  if (!iso) return "—"
+  if (!iso) return "-"
   try {
     const d = new Date(iso)
     return new Intl.DateTimeFormat("pt-PT", {
@@ -17,7 +17,7 @@ export function formatarData(iso: string | null | undefined): string {
 }
 
 export function formatarDataCurta(iso: string | null | undefined): string {
-  if (!iso) return "—"
+  if (!iso) return "-"
   try {
     const d = new Date(iso)
     return new Intl.DateTimeFormat("pt-PT", {
@@ -32,7 +32,7 @@ export function formatarDataCurta(iso: string | null | undefined): string {
 }
 
 export function formatarDuracao(inicio: string | null, fim: string | null): string {
-  if (!inicio) return "—"
+  if (!inicio) return "-"
   const a = new Date(inicio).getTime()
   const b = fim ? new Date(fim).getTime() : Date.now()
   const diff = Math.max(0, b - a)
@@ -47,8 +47,8 @@ export function formatarDuracao(inicio: string | null, fim: string | null): stri
 
 export function rotuloEstado(estado: EstadoTarefa): string {
   switch (estado) {
-    case "em_fila":
-      return "Em fila"
+    case "pendente":
+      return "Pendente"
     case "em_execucao":
       return "A executar"
     case "concluido":

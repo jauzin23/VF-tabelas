@@ -15,51 +15,48 @@ import { api } from "@/lib/api"
 import type { Tarefa } from "@/lib/types"
 
 export function DashboardStats() {
-  const { tarefas: locais } = useTarefasLocais()
-  const [carregadas, setCarregadas] = useState<Tarefa[]>([])
+  const { lastUpdate } = useTarefasLocais()
+  const [tarefas, setTarefas] = useState<Tarefa[]>([])
   const [aCarregar, setACarregar] = useState(true)
 
   useEffect(() => {
     let cancelado = false
     async function carregar() {
       setACarregar(true)
-      const resultados = await Promise.all(
-        locais.map(async (t) => {
-          try {
-            return await api.listarTarefa(t.id)
-          } catch {
-            return null
-          }
-        }),
-      )
-      if (cancelado) return
-      setCarregadas(resultados.filter(Boolean) as Tarefa[])
-      setACarregar(false)
+      try {
+        const r = await api.listarTarefas()
+        if (cancelado) return
+        setTarefas(r)
+      } catch (e) {
+        console.error("Erro ao carregar estatísticas:", e)
+      } finally {
+        if (!cancelado) setACarregar(false)
+      }
     }
     carregar()
     return () => {
       cancelado = true
     }
-  }, [locais])
+  }, [lastUpdate])
 
-  const emCurso = carregadas.filter(
-    (t) => t.estado === "em_execucao" || t.estado === "em_fila",
+  const emCurso = tarefas.filter(
+    (t) => t.estado === "em_execucao" || t.estado === "pendente" || t.esta_a_correr,
   ).length
-  const concluidas = carregadas.filter((t) => t.estado === "concluido").length
-  const imagens = carregadas.reduce(
+  const concluidas = tarefas.filter((t) => t.estado === "concluido").length
+  const imagens = tarefas.reduce(
     (acc, t) => acc + (t.progresso?.imagens_encontradas ?? 0),
     0,
   )
-  const tabelas = carregadas.reduce(
+  const tabelas = tarefas.reduce(
     (acc, t) => acc + (t.progresso?.tabelas_detetadas ?? 0),
     0,
   )
 
   const cartoes = [
     {
-      titulo: "Tarefas locais",
-      valor: locais.length,
-      descricao: "Criadas neste navegador",
+      titulo: "Total de tarefas",
+      valor: tarefas.length,
+      descricao: "No servidor",
       icone: ListChecks,
     },
     {
@@ -68,22 +65,10 @@ export function DashboardStats() {
       descricao: `${concluidas} concluídas`,
       icone: Activity,
     },
-    {
-      titulo: "Imagens encontradas",
-      valor: imagens,
-      descricao: "Soma de todas as tarefas",
-      icone: ImageIcon,
-    },
-    {
-      titulo: "Tabelas detetadas",
-      valor: tabelas,
-      descricao: "Identificadas pelo modelo",
-      icone: TableProperties,
-    },
   ]
 
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-2">
       {cartoes.map((c) => {
         const Icone = c.icone
         return (
@@ -95,7 +80,7 @@ export function DashboardStats() {
               <Icone className="size-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              {aCarregar && locais.length > 0 ? (
+              {aCarregar && tarefas.length === 0 ? (
                 <Skeleton className="h-8 w-16" />
               ) : (
                 <div className="text-2xl font-semibold tracking-tight">

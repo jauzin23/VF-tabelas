@@ -20,111 +20,131 @@ import {
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
-import { AspectRatio } from "@/components/ui/aspect-ratio"
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty"
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
 import {
   Alert,
   AlertDescription,
-  AlertTitle,
 } from "@/components/ui/alert"
 
 import { api } from "@/lib/api"
-import type { DetecaoTabela } from "@/lib/types"
+
+interface ImageResult {
+  id: string
+  file: File
+  preview: string
+  resultado: { tem_tabela: boolean } | null
+  aProcessar: boolean
+  erro: string | null
+}
 
 export function ImageDetector() {
-  const [ficheiro, setFicheiro] = useState<File | null>(null)
-  const [preview, setPreview] = useState<string | null>(null)
-  const [resultado, setResultado] = useState<DetecaoTabela[] | null>(null)
-  const [aProcessar, setAProcessar] = useState(false)
-  const [erro, setErro] = useState<string | null>(null)
+  const [ficheiros, setFicheiros] = useState<ImageResult[]>([])
   const [aArrastar, setAArrastar] = useState(false)
+  const [previewId, setPreviewId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const selecionar = useCallback((f: File | null) => {
-    setResultado(null)
-    setErro(null)
-    if (!f) {
-      setFicheiro(null)
-      setPreview(null)
-      return
-    }
-    if (!f.type.startsWith("image/")) {
-      toast.error("Ficheiro inválido", {
-        description: "Apenas são aceites imagens.",
+  const adicionarFicheiros = useCallback((files: FileList | null) => {
+    if (!files) return
+    const novosFicheiros: ImageResult[] = Array.from(files)
+      .filter((f) => {
+        if (!f.type.startsWith("image/")) {
+          toast.error("Ficheiro inválido", {
+            description: `${f.name} não é uma imagem.`,
+          })
+          return false
+        }
+        return true
       })
-      return
-    }
-    setFicheiro(f)
-    const url = URL.createObjectURL(f)
-    setPreview(url)
+      .map((f) => ({
+        id: Math.random().toString(36),
+        file: f,
+        preview: URL.createObjectURL(f),
+        resultado: null,
+        aProcessar: false,
+        erro: null,
+      }))
+    setFicheiros((prev) => [...prev, ...novosFicheiros])
   }, [])
 
-  function repor() {
-    setFicheiro(null)
-    setPreview(null)
-    setResultado(null)
-    setErro(null)
-    if (inputRef.current) inputRef.current.value = ""
-  }
+  const removerFicheiro = useCallback((id: string) => {
+    setFicheiros((prev) => {
+      const ficheiro = prev.find((f) => f.id === id)
+      if (ficheiro) {
+        URL.revokeObjectURL(ficheiro.preview)
+      }
+      return prev.filter((f) => f.id !== id)
+    })
+  }, [])
 
-  async function detetar() {
-    if (!ficheiro) return
-    setAProcessar(true)
-    setErro(null)
-    setResultado(null)
-    try {
-      const r = await api.detetarTabela(ficheiro)
-      setResultado(r)
-      toast.success("Análise concluída", {
-        description: `${r.length} deteção(ões) devolvida(s).`,
-      })
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Erro desconhecido"
-      setErro(msg)
-      toast.error("Falha na deteção", { description: msg })
-    } finally {
-      setAProcessar(false)
+  const detetarUm = useCallback(
+    async (id: string) => {
+      setFicheiros((prev) =>
+        prev.map((f) =>
+          f.id === id ? { ...f, aProcessar: true, erro: null } : f
+        )
+      )
+      try {
+        const ficheiro = ficheiros.find((f) => f.id === id)
+        if (!ficheiro) return
+        const r = await api.detetarTabela(ficheiro.file)
+        console.log("[ImageDetector] API Response for", ficheiro.file.name, ":", r)
+        
+        const resultado = { tem_tabela: !!r.tem_tabela }
+        
+        console.log("[ImageDetector] Normalized resultado:", resultado)
+        setFicheiros((prev) =>
+          prev.map((f) =>
+            f.id === id ? { ...f, resultado, aProcessar: false } : f
+          )
+        )
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Erro desconhecido"
+        console.error("[ImageDetector] Error detecting:", msg, e)
+        toast.error("Erro na análise", { description: msg })
+        setFicheiros((prev) =>
+          prev.map((f) =>
+            f.id === id ? { ...f, erro: msg, aProcessar: false } : f
+          )
+        )
+      }
+    },
+    [ficheiros]
+  )
+
+  const detetarTodos = useCallback(async () => {
+    const semResultado = ficheiros.filter((f) => f.resultado === null && !f.erro)
+    for (const f of semResultado) {
+      await detetarUm(f.id)
     }
-  }
+  }, [ficheiros, detetarUm])
 
-  const tabelas = resultado?.filter((r) => r.etiqueta === "table") ?? []
-  const melhorPontuacao = resultado
-    ? Math.max(0, ...resultado.map((r) => r.pontuacao ?? 0))
-    : 0
+  const limpar = useCallback(() => {
+    ficheiros.forEach((f) => URL.revokeObjectURL(f.preview))
+    setFicheiros([])
+    if (inputRef.current) inputRef.current.value = ""
+  }, [ficheiros])
 
   return (
-    <div className="grid gap-6 lg:grid-cols-5">
-      <Card className="lg:col-span-3">
+    <div className="grid gap-6">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Upload className="size-4 text-primary" />
-            Carregar imagem
+            Carregar imagens
           </CardTitle>
           <CardDescription>
-            Endpoint:{" "}
-            <code className="font-mono">POST /api/modelo/detetar-tabela</code>
+            Seleciona múltiplas imagens para análise de tabelas
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           <label
-            htmlFor="ficheiro"
+            htmlFor="ficheiros"
             onDragOver={(e) => {
               e.preventDefault()
               setAArrastar(true)
@@ -133,8 +153,7 @@ export function ImageDetector() {
             onDrop={(e) => {
               e.preventDefault()
               setAArrastar(false)
-              const f = e.dataTransfer.files?.[0]
-              if (f) selecionar(f)
+              adicionarFicheiros(e.dataTransfer.files)
             }}
             className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-8 transition-colors ${
               aArrastar
@@ -147,192 +166,208 @@ export function ImageDetector() {
             </div>
             <div className="text-center">
               <p className="text-sm font-medium">
-                Arrasta uma imagem ou clica para selecionar
+                Arrasta uma ou múltiplas imagens ou clica para selecionar
               </p>
               <p className="text-xs text-muted-foreground">
                 Formatos suportados: PNG, JPG, WEBP
               </p>
             </div>
             <input
-              id="ficheiro"
+              id="ficheiros"
               ref={inputRef}
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
-              onChange={(e) => selecionar(e.target.files?.[0] ?? null)}
+              onChange={(e) => adicionarFicheiros(e.target.files)}
             />
           </label>
 
-          {preview && (
-            <div className="grid gap-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                Pré-visualização
-              </span>
-              <AspectRatio
-                ratio={16 / 10}
-                className="overflow-hidden rounded-md border bg-muted"
+          {ficheiros.length > 0 && (
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={limpar}
+                disabled={ficheiros.some((f) => f.aProcessar)}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={preview || "/placeholder.svg"}
-                  alt={ficheiro?.name || "Pré-visualização"}
-                  className="h-full w-full object-contain"
-                />
-              </AspectRatio>
-              {ficheiro && (
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span className="truncate font-mono">{ficheiro.name}</span>
-                  <span className="tabular-nums">
-                    {(ficheiro.size / 1024).toFixed(1)} KB
-                  </span>
-                </div>
-              )}
+                <RotateCcw className="size-4" />
+                Limpar tudo
+              </Button>
+              <Button
+                type="button"
+                onClick={detetarTodos}
+                disabled={ficheiros.every((f) => f.resultado !== null || f.erro)}
+              >
+                {ficheiros.some((f) => f.aProcessar) ? (
+                  <>
+                    <Spinner className="size-4" />
+                    A analisar…
+                  </>
+                ) : (
+                  <>
+                    <TableProperties className="size-4" />
+                    Analisar tudo
+                  </>
+                )}
+              </Button>
             </div>
           )}
-
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={repor}
-              disabled={aProcessar || !ficheiro}
-            >
-              <RotateCcw className="size-4" />
-              Limpar
-            </Button>
-            <Button
-              type="button"
-              onClick={detetar}
-              disabled={aProcessar || !ficheiro}
-            >
-              {aProcessar ? (
-                <>
-                  <Spinner className="size-4" />
-                  A analisar…
-                </>
-              ) : (
-                <>
-                  <TableProperties className="size-4" />
-                  Detetar tabela
-                </>
-              )}
-            </Button>
-          </div>
         </CardContent>
       </Card>
 
-      <Card className="lg:col-span-2">
-        <CardHeader>
-          <CardTitle className="text-base">Resultado</CardTitle>
-          <CardDescription>
-            Etiquetas e pontuações devolvidas pelo modelo.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          {erro && (
-            <Alert variant="destructive">
-              <XCircle className="size-4" />
-              <AlertTitle>Erro</AlertTitle>
-              <AlertDescription>{erro}</AlertDescription>
-            </Alert>
-          )}
+      {ficheiros.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Resultados</CardTitle>
+            <CardDescription>
+              {ficheiros.length} imagem(ns) carregada(s)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {ficheiros.map((img) => {
+                const temResultado = img.resultado !== null
+                const temTabela = img.resultado?.tem_tabela === true
+                
+                return (
+                  <div
+                    key={img.id}
+                    className="flex items-center gap-4 rounded-lg border p-3"
+                  >
+                    {/* Thumbnail */}
+                    <button
+                      onClick={() => setPreviewId(img.id)}
+                      className="h-16 w-16 shrink-0 overflow-hidden rounded border bg-muted cursor-pointer hover:opacity-80 transition-opacity"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={img.preview}
+                        alt={img.file.name}
+                        className="h-full w-full object-cover"
+                      />
+                    </button>
 
-          {!resultado && !erro && (
-            <Empty className="min-h-[200px] border-0 p-4">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <ImageIcon />
-                </EmptyMedia>
-                <EmptyTitle>Sem análise</EmptyTitle>
-                <EmptyDescription>
-                  Carrega uma imagem e clica em &quot;Detetar tabela&quot; para
-                  obter resultados.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          )}
+                    {/* File info and status */}
+                    <div className="flex-1 min-w-0">
+                      <p className="truncate text-sm font-medium" title={img.file.name}>
+                        {img.file.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {(img.file.size / 1024).toFixed(1)} KB
+                      </p>
 
-          {resultado && (
-            <>
-              <div className="rounded-lg border bg-muted/30 p-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Veredicto</span>
-                  {tabelas.length > 0 ? (
-                    <Badge className="gap-1">
-                      <CheckCircle2 className="size-3" />
-                      Tabela detetada
-                    </Badge>
-                  ) : (
-                    <Badge variant="secondary" className="gap-1">
-                      <XCircle className="size-3" />
-                      Sem tabela
-                    </Badge>
-                  )}
-                </div>
-                <Separator className="my-3" />
-                <div className="grid gap-1">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Confiança máxima</span>
-                    <span className="tabular-nums">
-                      {(melhorPontuacao * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                  <Progress value={melhorPontuacao * 100} />
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {tabelas.length} de {resultado.length} deteções
-                  classificadas como tabela.
-                </p>
-              </div>
+                      {img.aProcessar && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <Spinner className="size-3" />
+                          <Badge variant="outline">A analisar…</Badge>
+                        </div>
+                      )}
 
-              <div className="rounded-lg border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Etiqueta</TableHead>
-                      <TableHead className="text-right">Confiança</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {resultado.length === 0 && (
-                      <TableRow>
-                        <TableCell
-                          colSpan={2}
-                          className="text-center text-sm text-muted-foreground"
-                        >
-                          Nenhuma deteção devolvida.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {resultado.map((r, i) => (
-                      <TableRow key={i}>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              r.etiqueta === "table" ? "default" : "secondary"
-                            }
-                            className="font-normal"
-                          >
-                            {r.etiqueta}
+                      {img.erro && (
+                        <div className="mt-2">
+                          <Badge variant="destructive">{img.erro}</Badge>
+                        </div>
+                      )}
+
+                      {!img.aProcessar && !img.erro && temTabela && (
+                        <div className="mt-2">
+                          <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white border-none">
+                            <TableProperties className="size-3 mr-1" />
+                            Sim (Tabela)
                           </Badge>
-                          {r.motivo && (
-                            <span className="ml-2 text-xs text-muted-foreground">
-                              {r.motivo}
-                            </span>
+                        </div>
+                      )}
+                      {!img.aProcessar && !img.erro && temResultado && !temTabela && (
+                        <div className="mt-2">
+                          <Badge variant="destructive" className="bg-rose-600 hover:bg-rose-700 text-white border-none">
+                            Não
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-2 shrink-0">
+                      {!temResultado && !img.erro && (
+                        <Button
+                          size="sm"
+                          onClick={() => detetarUm(img.id)}
+                          disabled={img.aProcessar}
+                        >
+                          {img.aProcessar ? (
+                            <>
+                              <Spinner className="size-3" />
+                            </>
+                          ) : (
+                            "Analisar"
                           )}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {((r.pontuacao ?? 0) * 100).toFixed(1)}%
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => removerFicheiro(img.id)}
+                        disabled={img.aProcessar}
+                      >
+                        <RotateCcw className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Image Preview Dialog */}
+      {previewId && (
+        <Dialog open={!!previewId} onOpenChange={(open) => !open && setPreviewId(null)}>
+          <DialogContent className="max-w-4xl max-h-[90vh]">
+            <VisuallyHidden asChild>
+              <DialogTitle>Preview imagem</DialogTitle>
+            </VisuallyHidden>
+            {(() => {
+              const img = ficheiros.find((f) => f.id === previewId)
+              if (!img) return null
+              return (
+                <div className="flex flex-col gap-4">
+                  <div className="max-h-[70vh] overflow-auto flex items-center justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={img.preview}
+                      alt={img.file.name}
+                      className="max-w-full max-h-[70vh] object-contain"
+                    />
+                  </div>
+                  <div className="border-t pt-4">
+                    <p className="font-medium mb-2 truncate" title={img.file.name}>
+                      {img.file.name}
+                    </p>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      {(img.file.size / 1024).toFixed(1)} KB
+                    </p>
+                    {img.resultado?.tem_tabela && (
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white border-none">
+                          <TableProperties className="size-3 mr-1" />
+                          Sim (Tabela)
+                        </Badge>
+                      </div>
+                    )}
+                    {img.resultado && !img.resultado.tem_tabela && (
+                      <Badge variant="destructive" className="bg-rose-600 hover:bg-rose-700 text-white border-none">
+                        Não
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }
