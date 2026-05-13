@@ -329,7 +329,7 @@ function ConfiguracaoCard({
             <Linha rotulo="Duração">
               {formatarDuracao(tarefa.iniciado_em, tarefa.terminado_em)}
             </Linha>
-            {tarefa.url_atual && (
+            {tarefa.url_atual && tarefa.estado !== "concluido" && tarefa.estado !== "falhou" && (
               <Linha rotulo="A processar">
                 <span className="truncate text-xs">{tarefa.url_atual}</span>
               </Linha>

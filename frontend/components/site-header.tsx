@@ -38,7 +38,7 @@ export function SiteHeader() {
           href="/"
           className="text-sm font-semibold tracking-tight text-foreground"
         >
-          VF-Tabelas
+          TABELAS
         </Link>
 
         <Separator orientation="vertical" className="mx-1 h-5" />
