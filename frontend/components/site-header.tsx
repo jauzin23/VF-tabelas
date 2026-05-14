@@ -14,11 +14,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Menu } from "lucide-react";
 
-
 const itensNav = [
-  { titulo: "Painel", href: "/" },
   { titulo: "Tarefas", href: "/tarefas" },
-  { titulo: "Nova tarefa", href: "/tarefas?nova=true" },
   { titulo: "Detetar imagem", href: "/detetar" },
 ];
 
@@ -33,12 +30,11 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-3 px-4 md:px-6 lg:px-8">
-        {/* Marca textual, sem logotipo */}
         <Link
           href="/"
           className="text-sm font-semibold tracking-tight text-foreground"
         >
-          TABELAS
+          VF-TABELAS
         </Link>
 
         <Separator orientation="vertical" className="mx-1 h-5" />
@@ -84,7 +80,6 @@ export function SiteHeader() {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-
       </div>
     </header>
   );

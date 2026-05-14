@@ -1,33 +1,24 @@
-import Link from "next/link"
-import {
-  ListChecks,
-  PlusCircle,
-  ImageIcon,
-  ArrowRight,
-} from "lucide-react"
+import Link from "next/link";
+import { ListChecks, PlusCircle, ImageIcon, ArrowRight } from "lucide-react";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
-import { DashboardStats } from "@/components/dashboard-stats"
-import { TaskList } from "@/components/task-list"
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { DashboardStats } from "@/components/dashboard-stats";
+import { TaskList } from "@/components/task-list";
 
 export default function PaginaInicial() {
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-          Painel de extração
+          Painel
         </h1>
-        <p className="text-balance text-muted-foreground">
-          Gere tarefas de scraping e deteção de tabelas em páginas web, com
-          acompanhamento em tempo real do progresso.
-        </p>
       </div>
 
       <DashboardStats />
@@ -96,5 +87,5 @@ export default function PaginaInicial() {
         <TaskList limite={5} compacto />
       </div>
     </div>
-  )
+  );
 }

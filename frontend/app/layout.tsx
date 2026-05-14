@@ -1,26 +1,25 @@
-import type { Metadata, Viewport } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
-import { Analytics } from "@vercel/analytics/next"
-import { Toaster } from "@/components/ui/sonner"
-import { SiteHeader } from "@/components/site-header"
-import "./globals.css"
+import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
+import { Toaster } from "@/components/ui/sonner";
+import { SiteHeader } from "@/components/site-header";
+import "./globals.css";
 
-const geist = Geist({ subsets: ["latin"], variable: "--font-geist" })
+const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
 const geistMono = Geist_Mono({
   subsets: ["latin"],
   variable: "--font-geist-mono",
-})
+});
 
 export const metadata: Metadata = {
-  title: "VF-Tabelas - Painel de Extração",
+  title: "VFTabelas",
   description:
-    "Painel para gestão de tarefas de extração e deteção de tabelas em páginas web.",
-  generator: "v0.app",
-}
+    "Painel para a extração e deteção de tabelas em imagens depáginas web.",
+};
 
 export const viewport: Viewport = {
   themeColor: "#0a0a0a",
-}
+};
 
 export default function RootLayout({
   children,
@@ -41,5 +40,5 @@ export default function RootLayout({
         {process.env.NODE_ENV === "production" && <Analytics />}
       </body>
     </html>
-  )
+  );
 }

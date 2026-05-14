@@ -115,7 +115,7 @@ export function TaskCreateForm({ noCard = false }: { noCard?: boolean }) {
           })
           return
         }
-        const t = await api.criarTarefaLote(lista, opcoes)
+        const t = await api.criarTarefaLote(lista)
         adicionar()
         toast.success("Tarefa em lote criada", {
           description: `${lista.length} URLs enviados.`,
@@ -259,8 +259,8 @@ export function TaskCreateForm({ noCard = false }: { noCard?: boolean }) {
                 </div>
               </AccordionContent>
             </AccordionItem>
-            </Accordion>
-          )}
+          </Accordion>
+        )}
 
           <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button
