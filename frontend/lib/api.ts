@@ -10,7 +10,12 @@ export function getApiBaseUrl(): string {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBaseUrl();
   const fullUrl = `${base}${path}`;
-  console.log("[Request] Fetching:", fullUrl, "with method:", init?.method || "GET");
+  console.log(
+    "[Request] Fetching:",
+    fullUrl,
+    "with method:",
+    init?.method || "GET",
+  );
   const res = await fetch(fullUrl, {
     ...init,
     headers: {
@@ -32,7 +37,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     console.error("[Request] Error response:", mensagem);
     throw new Error(mensagem);
   }
-  const data = await res.json() as T;
+  const data = (await res.json()) as T;
   console.log("[Request] Response data:", data);
   return data;
 }
@@ -48,7 +53,11 @@ export const api = {
       body: JSON.stringify({ url, opcoes, sse }),
     }),
 
-  criarTarefaLote: (urls: string[], opcoes?: OpcoesTarefa, sse: boolean = true) =>
+  criarTarefaLote: (
+    urls: string[],
+    opcoes?: OpcoesTarefa,
+    sse: boolean = true,
+  ) =>
     request<Tarefa>("/api/paginacao-multurls", {
       method: "POST",
       body: JSON.stringify({ urls, opcoes, sse }),
@@ -66,13 +75,10 @@ export const api = {
     const form = new FormData();
     form.append("ficheiro", ficheiro);
     console.log("[API] Sending image detection request for:", ficheiro.name);
-    return request<{ tem_tabela: boolean }>(
-      "/api/modelo/detetar-tabela",
-      {
-        method: "POST",
-        body: form,
-      }
-    ).then((result) => {
+    return request<{ tem_tabela: boolean }>("/api/modelo/detetar-tabela", {
+      method: "POST",
+      body: form,
+    }).then((result) => {
       console.log("[API] Image detection response:", result);
       return result;
     });

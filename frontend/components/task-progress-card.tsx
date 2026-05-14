@@ -71,9 +71,6 @@ export function TaskProgressCard({ tarefa }: Props) {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Progresso global</CardTitle>
-          <CardDescription>
-            Acompanhamento do scraping e da análise de imagens.
-          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6">
           <BarraProgresso
