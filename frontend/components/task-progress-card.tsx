@@ -86,7 +86,7 @@ export function TaskProgressCard({ tarefa }: Props) {
             descricao={`${analisadas} de ${totalImagens || "-"}`}
             valor={percentAnalise}
           />
-          {tarefa.url_atual && (
+          {tarefa.url_atual && tarefa.esta_a_correr && (
             <>
               <Separator />
               <div className="grid gap-1">

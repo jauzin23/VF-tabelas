@@ -569,15 +569,52 @@ export function TaskResultsTable({ resultados }: Props) {
 
   return (
     <Card id="resultados-ancora">
-      <CardHeader className="flex flex-col gap-4 border-b">
+      <CardHeader className="border-b py-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <CardTitle className="text-base font-semibold">
-            {filtradas.length} de {resultados.length} resultado
-            {resultados.length === 1 ? "" : "s"}
+          <CardTitle className="text-base font-semibold shrink-0">
+            {filtradas.length} de {resultados.length} resultado{resultados.length === 1 ? "" : "s"}
           </CardTitle>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 mr-2">
-              <span className="text-xs text-muted-foreground whitespace-nowrap">Mostrar:</span>
+
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <div className="w-full sm:w-64">
+              <InputGroup>
+                <InputGroupAddon>
+                  <Search className="size-4" />
+                </InputGroupAddon>
+                <InputGroupInput
+                  placeholder="Pesquisar..."
+                  value={pesquisa}
+                  onChange={(e) => {
+                    setPesquisa(e.target.value)
+                    setPaginaAtual(1)
+                  }}
+                  className="h-9"
+                />
+              </InputGroup>
+            </div>
+
+            <Select
+              value={filtroEtiqueta}
+              onValueChange={(v) => {
+                setFiltroEtiqueta(v as FiltroEtiqueta)
+                setPaginaAtual(1)
+              }}
+            >
+              <SelectTrigger className="h-9 w-[150px]">
+                <Filter className="size-4" />
+                <SelectValue placeholder="Etiqueta" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todos</SelectItem>
+                <SelectItem value="com_tabela">Com tabela</SelectItem>
+                <SelectItem value="sem_tabela">Sem tabela</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Separator orientation="vertical" className="mx-1 hidden h-6 xl:block" />
+
+            <div className="flex items-center gap-2">
+              <span className="hidden text-xs text-muted-foreground whitespace-nowrap sm:inline">Mostrar:</span>
               <Select 
                 value={String(porPagina)} 
                 onValueChange={(v) => {
@@ -585,7 +622,7 @@ export function TaskResultsTable({ resultados }: Props) {
                   setPaginaAtual(1)
                 }}
               >
-                <SelectTrigger className="h-8 w-[70px] text-xs">
+                <SelectTrigger className="h-9 w-[70px] text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -597,7 +634,7 @@ export function TaskResultsTable({ resultados }: Props) {
               </Select>
             </div>
 
-            <div className="flex items-center rounded-lg border bg-muted p-1 mr-2">
+            <div className="flex items-center rounded-lg border bg-muted p-1">
               <Button
                 variant={vista === "tabela" ? "secondary" : "ghost"}
                 size="icon"
@@ -617,40 +654,9 @@ export function TaskResultsTable({ resultados }: Props) {
                 <LayoutGrid className="size-4" />
               </Button>
             </div>
+
             <ExportModal resultados={resultados} />
           </div>
-        </div>
-        <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
-          <InputGroup>
-            <InputGroupAddon>
-              <Search className="size-4" />
-            </InputGroupAddon>
-            <InputGroupInput
-              placeholder="Pesquisar URL, título, alt…"
-              value={pesquisa}
-              onChange={(e) => {
-                setPesquisa(e.target.value)
-                setPaginaAtual(1)
-              }}
-            />
-          </InputGroup>
-          <Select
-            value={filtroEtiqueta}
-            onValueChange={(v) => {
-              setFiltroEtiqueta(v as FiltroEtiqueta)
-              setPaginaAtual(1)
-            }}
-          >
-            <SelectTrigger className="min-w-[160px]">
-              <Filter className="size-4" />
-              <SelectValue placeholder="Etiqueta" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todas">Todos os resultados</SelectItem>
-              <SelectItem value="com_tabela">Com tabela</SelectItem>
-              <SelectItem value="sem_tabela">Sem tabela</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
       </CardHeader>
       

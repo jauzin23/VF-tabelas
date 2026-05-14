@@ -133,15 +133,12 @@ export function ImageDetector() {
 
   return (
     <div className="grid gap-6">
-      <Card>
+      <Card className="gap-3">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Upload className="size-4 text-primary" />
             Carregar imagens
           </CardTitle>
-          <CardDescription>
-            Seleciona múltiplas imagens para análise de tabelas
-          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           <label
@@ -234,10 +231,10 @@ export function ImageDetector() {
                 return (
                   <div
                     key={img.id}
-                    className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 rounded-lg border p-3 bg-card hover:bg-accent/5 transition-colors overflow-hidden"
+                    className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 sm:gap-4 rounded-lg border p-3 bg-card hover:bg-accent/5 transition-colors overflow-hidden"
                   >
-                    {/* Thumbnail and Info wrapper for better stacking */}
-                    <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                    {/* Thumbnail and Info wrapper */}
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                     {/* Thumbnail */}
                     <button
                       onClick={() => setPreviewId(img.id)}
@@ -253,7 +250,7 @@ export function ImageDetector() {
 
                     {/* File info and status */}
                     <div className="flex-1 min-w-0">
-                      <p className="truncate text-sm font-medium" title={img.file.name}>
+                      <p className="truncate text-sm font-medium block w-full" title={img.file.name}>
                         {img.file.name}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -290,7 +287,6 @@ export function ImageDetector() {
                       )}
                     </div>
                   </div>
-                  {/* End of Thumbnail and Info wrapper */}
 
                     {/* Actions */}
                     <div className="flex items-center justify-end gap-2 shrink-0 sm:w-auto w-full border-t sm:border-t-0 pt-2 sm:pt-0">
@@ -358,8 +354,8 @@ export function ImageDetector() {
                       className="max-w-full max-h-[70vh] object-contain"
                     />
                   </div>
-                  <div className="border-t pt-4">
-                    <p className="font-medium mb-2 break-all sm:truncate text-base" title={img.file.name}>
+                  <div className="border-t pt-4 min-w-0">
+                    <p className="font-medium mb-2 truncate text-base" title={img.file.name}>
                       {img.file.name}
                     </p>
                     <p className="text-sm text-muted-foreground mb-4">

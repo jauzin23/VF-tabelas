@@ -64,7 +64,6 @@ export const api = {
 
   detetarTabela: (ficheiro: File) => {
     const form = new FormData();
-    // O backend espera o campo "ficheiro" no multipart/form-data.
     form.append("ficheiro", ficheiro);
     console.log("[API] Sending image detection request for:", ficheiro.name);
     return request<{ tem_tabela: boolean }>(

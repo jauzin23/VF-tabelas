@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Alert,
@@ -84,10 +85,8 @@ export function TaskDetail({ id }: Props) {
 
   useEffect(() => {
     carregar()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
-  // SSE
   useEffect(() => {
     if (!tarefa) return
     if (tarefa.estado === "concluido" || tarefa.estado === "falhou") {
@@ -110,7 +109,6 @@ export function TaskDetail({ id }: Props) {
           const dados = JSON.parse(ev.data) as Tarefa
           setTarefa(dados)
         } catch {
-          // ignore
         }
       }
       es.onerror = () => {
@@ -132,7 +130,6 @@ export function TaskDetail({ id }: Props) {
     try {
       await api.apagarTarefa(id)
     } catch {
-      /* ignore */
     }
     remover()
     toast.success("Tarefa apagada")
@@ -273,7 +270,11 @@ export function TaskDetail({ id }: Props) {
         <Tabs defaultValue="progresso">
           <TabsList>
             <TabsTrigger value="progresso">Progresso</TabsTrigger>
-            <TabsTrigger value="resultados" className="gap-0">
+            <TabsTrigger
+              value="resultados"
+              className="gap-0"
+              disabled={tarefa.estado === "em_execucao"}
+            >
               Resultados
             </TabsTrigger>
             <TabsTrigger value="config">Configuração</TabsTrigger>
@@ -326,57 +327,54 @@ function ConfiguracaoCard({
             <Linha rotulo="Duração">
               {formatarDuracao(tarefa.iniciado_em, tarefa.terminado_em)}
             </Linha>
-            {tarefa.url_atual && tarefa.estado !== "concluido" && tarefa.estado !== "falhou" && (
-              <Linha rotulo="A processar">
-                <span className="truncate text-xs">{tarefa.url_atual}</span>
+          </dl>
+        </CardContent>
+      </Card>
+
+      {urls.length === 1 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Opções de execução</CardTitle>
+            <CardDescription>Parâmetros aplicados</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
+              <Linha rotulo="Páginas máx.">
+                {tarefa.opcoes.maxPages === 0
+                  ? "Ilimitado"
+                  : tarefa.opcoes.maxPages ?? "-"}
               </Linha>
-            )}
-          </dl>
-        </CardContent>
-      </Card>
+              <Linha rotulo="Profundidade">
+                {tarefa.opcoes.maxDepth ?? "-"}
+              </Linha>
+              <Linha rotulo="Concorrência">
+                {tarefa.opcoes.concurrency ?? "-"}
+              </Linha>
+              <Linha rotulo="Análise">
+                {tarefa.opcoes.analysisConcurrency ?? "-"}
+              </Linha>
+              <Linha rotulo="Timeout pág.">
+                {tarefa.opcoes.pageTimeoutMs
+                  ? `${(tarefa.opcoes.pageTimeoutMs / 1000).toFixed(0)} s`
+                  : "-"}
+              </Linha>
+              <Linha rotulo="Timeout total">
+                {tarefa.opcoes.maxJobSeconds
+                  ? `${Math.round(tarefa.opcoes.maxJobSeconds / 60)} min`
+                  : "-"}
+              </Linha>
+              <Linha rotulo="Paginação">
+                {tarefa.opcoes.seguirPaginacao ? "Sim" : "Não"}
+              </Linha>
+              <Linha rotulo="Detalhe">
+                {tarefa.opcoes.seguirDetalhe ? "Sim" : "Não"}
+              </Linha>
+            </dl>
+          </CardContent>
+        </Card>
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Opções de execução</CardTitle>
-          <CardDescription>Parâmetros aplicados</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
-            <Linha rotulo="Páginas máx.">
-              {tarefa.opcoes.maxPages === 0
-                ? "Ilimitado"
-                : tarefa.opcoes.maxPages ?? "-"}
-            </Linha>
-            <Linha rotulo="Profundidade">
-              {tarefa.opcoes.maxDepth ?? "-"}
-            </Linha>
-            <Linha rotulo="Concorrência">
-              {tarefa.opcoes.concurrency ?? "-"}
-            </Linha>
-            <Linha rotulo="Análise">
-              {tarefa.opcoes.analysisConcurrency ?? "-"}
-            </Linha>
-            <Linha rotulo="Timeout pág.">
-              {tarefa.opcoes.pageTimeoutMs
-                ? `${(tarefa.opcoes.pageTimeoutMs / 1000).toFixed(0)} s`
-                : "-"}
-            </Linha>
-            <Linha rotulo="Timeout total">
-              {tarefa.opcoes.maxJobSeconds
-                ? `${Math.round(tarefa.opcoes.maxJobSeconds / 60)} min`
-                : "-"}
-            </Linha>
-            <Linha rotulo="Paginação">
-              {tarefa.opcoes.seguirPaginacao ? "Sim" : "Não"}
-            </Linha>
-            <Linha rotulo="Detalhe">
-              {tarefa.opcoes.seguirDetalhe ? "Sim" : "Não"}
-            </Linha>
-          </dl>
-        </CardContent>
-      </Card>
-
-      <Card className="md:col-span-2">
+      <Card className={urls.length === 1 ? "md:col-span-2" : ""}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <ImageIcon className="size-4" />
@@ -388,26 +386,28 @@ function ConfiguracaoCard({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ul className="grid gap-1 text-sm">
-            {urls.map((u, i) => (
-              <li
-                key={`${u}-${i}`}
-                className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2"
-              >
-                <span className="truncate font-mono text-xs">{u}</span>
-                <Button asChild variant="ghost" size="sm">
-                  <a
-                    href={u}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={`Abrir ${u}`}
-                  >
-                    <ExternalLink className="size-3.5" />
-                  </a>
-                </Button>
-              </li>
-            ))}
-          </ul>
+          <ScrollArea className="h-[280px] pr-4">
+            <ul className="grid gap-1 text-sm">
+              {urls.map((u, i) => (
+                <li
+                  key={`${u}-${i}`}
+                  className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2"
+                >
+                  <span className="truncate font-mono text-xs">{u}</span>
+                  <Button asChild variant="ghost" size="sm">
+                    <a
+                      href={u}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`Abrir ${u}`}
+                    >
+                      <ExternalLink className="size-3.5" />
+                    </a>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </ScrollArea>
         </CardContent>
       </Card>
     </div>
