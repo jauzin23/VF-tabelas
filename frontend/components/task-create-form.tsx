@@ -54,7 +54,7 @@ const PADRAO: OpcoesUI = {
   seguirDetalhe: true,
 }
 
-export function TaskCreateForm() {
+export function TaskCreateForm({ noCard = false }: { noCard?: boolean }) {
   const router = useRouter()
   const { adicionar } = useTarefasLocais()
 
@@ -132,19 +132,12 @@ export function TaskCreateForm() {
 
   const urlsParsed = parseUrls(urlsTexto)
 
-  return (
-    <div className="gap-6">
-      <Card className="lg:col-span-2">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Sparkles className="size-4 text-primary" />
-            Origem
-          </CardTitle>
-          <CardDescription>
-            Escolhe entre um URL único ou um lote de URLs para processamento.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+  const FormContent = (
+    <CardContent className={noCard ? "p-0" : ""}>
+      {noCard && <div className="mb-4" />}
+      <div className="space-y-6">
+        <div>
+          <Label className="mb-2 block text-sm font-medium">Origem</Label>
           <Tabs
             value={modo}
             onValueChange={(v) => setModo(v as "unico" | "lote")}
@@ -196,8 +189,8 @@ export function TaskCreateForm() {
               </div>
             </TabsContent>
           </Tabs>
-
-          <Separator className="my-6" />
+        </div>
+        <Separator className="my-6" />
 
           {modo === "unico" && (
             <Accordion type="single" collapsible defaultValue="opcoes">
@@ -296,8 +289,17 @@ export function TaskCreateForm() {
               )}
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </CardContent>
+  )
+
+  if (noCard) {
+    return FormContent
+  }
+
+  return (
+    <div className="gap-6">
+      <Card className="lg:col-span-2">{FormContent}</Card>
     </div>
   )
 }

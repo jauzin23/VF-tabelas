@@ -1,15 +1,21 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import * as XLSX from "xlsx"
 import {
   ArrowUpDown,
+  Check,
+  Clipboard,
   Download,
   ExternalLink,
+  FileSpreadsheet,
+  FileJson,
   Filter,
   Image as ImageIcon,
   Search,
   TableProperties,
 } from "lucide-react"
+import { toast } from "sonner"
 
 import {
   Card,
@@ -18,6 +24,8 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -34,14 +42,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Slider } from "@/components/ui/slider"
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty"
 import {
   Dialog,
   DialogContent,
@@ -53,6 +53,7 @@ import {
 import {
   Pagination,
   PaginationContent,
+  PaginationEllipsis,
   PaginationItem,
   PaginationLink,
   PaginationNext,
@@ -65,6 +66,14 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group"
 import { AspectRatio } from "@/components/ui/aspect-ratio"
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty"
+import { Separator } from "@/components/ui/separator"
 
 import { api } from "@/lib/api"
 import type { ImagemResultado } from "@/lib/types"
@@ -76,18 +85,372 @@ type FiltroEtiqueta = "todas" | "com_tabela" | "sem_tabela"
 
 const POR_PAGINA = 20
 
+// ─── campo exportável ────────────────────────────────────────────────────────
+const CAMPOS_EXPORTAVEIS = [
+  { id: "id",            label: "ID" },
+  { id: "url_origem",    label: "URL Imagem" },
+  { id: "url_pagina",    label: "URL Página" },
+  { id: "titulo_pagina", label: "Título da Página" },
+  { id: "alt",           label: "Alt text" },
+  { id: "tem_tabela",    label: "Tem tabela" },
+  { id: "paginas_origem",label: "Páginas de origem" },
+] as const
+
+type CampoId = typeof CAMPOS_EXPORTAVEIS[number]["id"]
+
 interface Props {
   resultados: ImagemResultado[]
 }
 
+// ─── hooks auxiliares ────────────────────────────────────────────────────────
+function useCopiar() {
+  const [copiado, setCopiado] = useState<string | null>(null)
+  function copiar(texto: string, chave: string) {
+    navigator.clipboard.writeText(texto).then(() => {
+      setCopiado(chave)
+      toast.success("URL copiada")
+      setTimeout(() => setCopiado(null), 1500)
+    })
+  }
+  return { copiado, copiar }
+}
+
+// ─── componente de cópia inline ──────────────────────────────────────────────
+function BotaoCopiar({
+  url,
+  chave,
+  copiado,
+  copiar,
+}: {
+  url: string
+  chave: string
+  copiado: string | null
+  copiar: (u: string, k: string) => void
+}) {
+  const ativo = copiado === chave
+  return (
+    <button
+      type="button"
+      aria-label="Copiar URL"
+      onClick={(e) => { e.preventDefault(); copiar(url, chave) }}
+      className={[
+        "ml-1 rounded p-0.5 transition-all",
+        "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+        ativo
+          ? "text-emerald-500"
+          : "text-muted-foreground hover:text-foreground",
+      ].join(" ")}
+    >
+      {ativo ? <Check className="size-3" /> : <Clipboard className="size-3" />}
+    </button>
+  )
+}
+
+// ─── célula de página(s) ────────────────────────────────────────────────────
+function CelulaOrigem({ r }: { r: ImagemResultado }) {
+  const { copiado, copiar } = useCopiar()
+  const paginas =
+    r.paginas_origem && r.paginas_origem.length > 0
+      ? r.paginas_origem
+      : [{ url: r.url_pagina, titulo: r.titulo_pagina }]
+
+  const primaria = paginas[0]
+  const tituloDisplay = primaria.titulo || nomeDominio(primaria.url)
+  const temMultiplas = paginas.length > 1
+
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      {/* título / link primário */}
+      <div className="group flex items-center gap-1 min-w-0">
+        <a
+          href={primaria.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="truncate font-medium text-sm hover:underline underline-offset-2 text-foreground"
+          title={primaria.url}
+        >
+          {tituloDisplay}
+        </a>
+        {temMultiplas && (
+          <Badge
+            variant="outline"
+            className="h-4 px-1 text-[10px] shrink-0 bg-primary/5 text-primary border-primary/20"
+          >
+            +{paginas.length - 1}
+          </Badge>
+        )}
+        <BotaoCopiar
+          url={primaria.url}
+          chave={`main-${r.id}`}
+          copiado={copiado}
+          copiar={copiar}
+        />
+      </div>
+
+      {/* lista expandível para múltiplas páginas */}
+      {temMultiplas ? (
+        <details className="mt-0.5 group/det">
+          <summary className="cursor-pointer text-[10px] text-muted-foreground hover:text-foreground list-none flex items-center gap-1">
+            <span className="group-open/det:rotate-90 transition-transform">▶</span>
+            Ver todas as {paginas.length} páginas
+          </summary>
+          <ul className="mt-1 space-y-0.5 pl-2 border-l ml-1 max-h-24 overflow-y-auto">
+            {paginas.map((p, i) => (
+              <li key={i} className="group flex items-center gap-1 min-w-0 text-[10px]">
+                <a
+                  href={p.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary hover:underline truncate"
+                  title={p.url}
+                >
+                  {p.titulo || p.url}
+                </a>
+                <BotaoCopiar
+                  url={p.url}
+                  chave={`page-${r.id}-${i}`}
+                  copiado={copiado}
+                  copiar={copiar}
+                />
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : (
+        <span className="truncate text-xs text-muted-foreground">
+          {truncar(r.alt || r.url_origem, 70)}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ─── modal de exportação ─────────────────────────────────────────────────────
+function ExportModal({ resultados }: { resultados: ImagemResultado[] }) {
+  const [aberto, setAberto] = useState(false)
+  const [filtro, setFiltro] = useState<FiltroEtiqueta>("todas")
+  const [campos, setCampos] = useState<Set<CampoId>>(
+    new Set(CAMPOS_EXPORTAVEIS.map((c) => c.id))
+  )
+
+  const dadosFiltrados = useMemo(() => {
+    if (filtro === "com_tabela") return resultados.filter((r) => r.tem_tabela)
+    if (filtro === "sem_tabela") return resultados.filter((r) => !r.tem_tabela)
+    return resultados
+  }, [resultados, filtro])
+
+  function toggleCampo(id: CampoId) {
+    setCampos((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function construirObjeto(r: ImagemResultado): Record<string, unknown> {
+    const obj: Record<string, unknown> = {}
+    if (campos.has("id"))             obj.id = r.id
+    if (campos.has("url_origem"))     obj.url_origem = r.url_origem
+    if (campos.has("url_pagina"))     obj.url_pagina = r.url_pagina
+    if (campos.has("titulo_pagina"))  obj.titulo_pagina = r.titulo_pagina
+    if (campos.has("alt"))            obj.alt = r.alt
+    if (campos.has("tem_tabela"))     obj.tem_tabela = r.tem_tabela
+    if (campos.has("paginas_origem")) obj.paginas_origem = r.paginas_origem ?? []
+    return obj
+  }
+
+  // gera slug de data: YYYY-MM-DD_HH-MM
+  function slugData() {
+    const agora = new Date()
+    const pad = (n: number) => String(n).padStart(2, "0")
+    return (
+      `${agora.getFullYear()}-${pad(agora.getMonth() + 1)}-${pad(agora.getDate())}` +
+      `_${pad(agora.getHours())}-${pad(agora.getMinutes())}`
+    )
+  }
+
+  function nomeFicheiro(formato: string) {
+    const filtroSlug = filtro === "todas" ? "todos" : filtro
+    return `extração_${filtroSlug}_${slugData()}.${formato}`
+  }
+
+  function exportarJSON() {
+    const dados = dadosFiltrados.map(construirObjeto)
+    const blob = new Blob([JSON.stringify(dados, null, 2)], {
+      type: "application/json",
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = nomeFicheiro("json")
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success(`${dados.length} resultado(s) exportados como JSON`)
+    setAberto(false)
+  }
+
+  function exportarExcel() {
+    const linhas = dadosFiltrados.map((r) => {
+      const obj: Record<string, unknown> = {}
+      if (campos.has("id"))             obj["ID"] = r.id
+      if (campos.has("url_origem"))     obj["URL Imagem"] = r.url_origem
+      if (campos.has("url_pagina"))     obj["URL Página"] = r.url_pagina
+      if (campos.has("titulo_pagina"))  obj["Título"] = r.titulo_pagina
+      if (campos.has("alt"))            obj["Alt"] = r.alt
+      if (campos.has("tem_tabela"))     obj["Tem Tabela"] = r.tem_tabela ? "Sim" : "Não"
+      if (campos.has("paginas_origem")) {
+        const pags = r.paginas_origem ?? []
+        // \n dentro de uma célula Excel (requer wrapText)
+        obj["Páginas de Origem"] = pags.map((p) => p.url).join("\n")
+      }
+      return obj
+    })
+
+    const ws = XLSX.utils.json_to_sheet(linhas)
+
+    // auto-largura das colunas: calcula o máximo de carateres por coluna
+    const cabecalhos = Object.keys(linhas[0] ?? {})
+    const larguras = cabecalhos.map((cab) => {
+      const maxConteudo = linhas.reduce((max, linha) => {
+        const val = linha[cab]
+        if (val == null) return max
+        // para células com newlines, usar a linha mais longa
+        const maior = String(val).split("\n").reduce((m, l) => Math.max(m, l.length), 0)
+        return Math.max(max, maior)
+      }, 0)
+      return { wch: Math.min(80, Math.max(cab.length + 2, maxConteudo + 2)) }
+    })
+    ws["!cols"] = larguras
+
+    // activar wrapText em todas as células de dados
+    const intervalo = XLSX.utils.decode_range(ws["!ref"] ?? "A1")
+    for (let R = intervalo.s.r; R <= intervalo.e.r; R++) {
+      for (let C = intervalo.s.c; C <= intervalo.e.c; C++) {
+        const addr = XLSX.utils.encode_cell({ r: R, c: C })
+        if (!ws[addr]) continue
+        ws[addr].s = { alignment: { wrapText: true, vertical: "top" } }
+      }
+    }
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Resultados")
+    // xlsx-style não é necessário — writeFile com bookSST trata wrapText via sheetStubs
+    XLSX.writeFile(wb, nomeFicheiro("xlsx"), { cellStyles: true })
+    toast.success(`${linhas.length} resultado(s) exportados como Excel`)
+    setAberto(false)
+  }
+
+  const nenhumCampo = campos.size === 0
+
+  return (
+    <Dialog open={aberto} onOpenChange={setAberto}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Download className="size-4" />
+          Exportar
+        </Button>
+      </DialogTrigger>
+
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Exportar resultados</DialogTitle>
+          <DialogDescription>
+            Configure os filtros antes de exportar. Os filtros abaixo são
+            independentes da tabela principal.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-5 pt-1">
+          {/* filtro de conteúdo */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-sm font-medium">Conteúdo a exportar</Label>
+            <Select value={filtro} onValueChange={(v) => setFiltro(v as FiltroEtiqueta)}>
+              <SelectTrigger>
+                <Filter className="size-4 mr-2 shrink-0" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todos os resultados</SelectItem>
+                <SelectItem value="com_tabela">Apenas tabelas</SelectItem>
+                <SelectItem value="sem_tabela">Apenas não-tabelas</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              <span className="font-semibold tabular-nums text-foreground">
+                {dadosFiltrados.length}
+              </span>{" "}
+              de {resultados.length} resultado(s) serão exportados
+            </p>
+          </div>
+
+          <Separator />
+
+          {/* seleção de campos */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-sm font-medium">Campos a incluir</Label>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              {CAMPOS_EXPORTAVEIS.map((c) => (
+                <div key={c.id} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`campo-${c.id}`}
+                    checked={campos.has(c.id)}
+                    onCheckedChange={() => toggleCampo(c.id)}
+                  />
+                  <Label
+                    htmlFor={`campo-${c.id}`}
+                    className="text-sm font-normal cursor-pointer"
+                  >
+                    {c.label}
+                  </Label>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* botões de formato */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-sm font-medium">Formato</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                variant="outline"
+                className="h-14 flex-col gap-1 text-xs"
+                disabled={nenhumCampo || dadosFiltrados.length === 0}
+                onClick={exportarJSON}
+              >
+                <FileJson className="size-5" />
+                JSON
+              </Button>
+              <Button
+                variant="outline"
+                className="h-14 flex-col gap-1 text-xs"
+                disabled={nenhumCampo || dadosFiltrados.length === 0}
+                onClick={exportarExcel}
+              >
+                <FileSpreadsheet className="size-5" />
+                Excel (.xlsx)
+              </Button>
+            </div>
+            {nenhumCampo && (
+              <p className="text-xs text-destructive">
+                Seleciona pelo menos um campo para exportar.
+              </p>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── componente principal ────────────────────────────────────────────────────
 export function TaskResultsTable({ resultados }: Props) {
   const [pesquisa, setPesquisa] = useState("")
-  const [filtroEtiqueta, setFiltroEtiqueta] =
-    useState<FiltroEtiqueta>("todas")
+  const [filtroEtiqueta, setFiltroEtiqueta] = useState<FiltroEtiqueta>("todas")
   const [campo, setCampo] = useState<CampoOrdenacao>("tem_tabela")
   const [direcao, setDirecao] = useState<Direcao>("desc")
   const [paginaAtual, setPaginaAtual] = useState(1)
-
 
   const filtradas = useMemo(() => {
     let lista = [...resultados]
@@ -95,12 +458,7 @@ export function TaskResultsTable({ resultados }: Props) {
     if (pesquisa.trim()) {
       const q = pesquisa.trim().toLowerCase()
       lista = lista.filter((r) =>
-        [
-          r.url_origem,
-          r.url_pagina,
-          r.titulo_pagina,
-          r.alt,
-        ]
+        [r.url_origem, r.url_pagina, r.titulo_pagina, r.alt]
           .filter(Boolean)
           .some((s) => s.toLowerCase().includes(q)),
       )
@@ -113,12 +471,8 @@ export function TaskResultsTable({ resultados }: Props) {
     }
 
     lista.sort((a, b) => {
-      let av: number | string = 0
-      let bv: number | string = 0
-      if (campo === "tem_tabela") {
-        av = a.tem_tabela ? 1 : 0
-        bv = b.tem_tabela ? 1 : 0
-      }
+      const av = a.tem_tabela ? 1 : 0
+      const bv = b.tem_tabela ? 1 : 0
       if (av < bv) return direcao === "asc" ? -1 : 1
       if (av > bv) return direcao === "asc" ? 1 : -1
       return 0
@@ -139,47 +493,6 @@ export function TaskResultsTable({ resultados }: Props) {
       setCampo(c)
       setDirecao("desc")
     }
-  }
-
-  function exportarJSON() {
-    const blob = new Blob([JSON.stringify(filtradas, null, 2)], {
-      type: "application/json",
-    })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = "resultados.json"
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  function exportarCSV() {
-    if (filtradas.length === 0) return
-    const cabecalhos = [
-      "id",
-      "tem_tabela",
-      "url_origem",
-      "url_pagina",
-      "titulo_pagina",
-      "alt",
-    ]
-    const linhas = filtradas.map((r) =>
-      cabecalhos
-        .map((c) => {
-          const v = (r as unknown as Record<string, unknown>)[c]
-          const s = v == null ? "" : String(v)
-          return `"${s.replace(/"/g, '""')}"`
-        })
-        .join(","),
-    )
-    const csv = [cabecalhos.join(","), ...linhas].join("\n")
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = "resultados.csv"
-    a.click()
-    URL.revokeObjectURL(url)
   }
 
   if (resultados.length === 0) {
@@ -208,17 +521,10 @@ export function TaskResultsTable({ resultados }: Props) {
             {resultados.length === 1 ? "" : "s"}
           </CardTitle>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={exportarCSV}>
-              <Download className="size-4" />
-              CSV
-            </Button>
-            <Button variant="outline" size="sm" onClick={exportarJSON}>
-              <Download className="size-4" />
-              JSON
-            </Button>
+            <ExportModal resultados={resultados} />
           </div>
         </div>
-        <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-center">
+        <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
           <InputGroup>
             <InputGroupAddon>
               <Search className="size-4" />
@@ -268,14 +574,14 @@ export function TaskResultsTable({ resultados }: Props) {
                   <ArrowUpDown className="size-3" />
                 </button>
               </TableHead>
-              <TableHead className="w-[1%] text-right">Ações</TableHead>
+              <TableHead className="w-[1%] text-right">Abrir</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {visiveis.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={4}
                   className="h-24 text-center text-muted-foreground"
                 >
                   Nenhum resultado corresponde aos filtros.
@@ -288,52 +594,22 @@ export function TaskResultsTable({ resultados }: Props) {
                   <PreviaImagem imagem={r} />
                 </TableCell>
                 <TableCell>
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate font-medium">
-                        {r.titulo_pagina || nomeDominio(r.url_pagina)}
-                      </span>
-                      {r.paginas_origem?.length > 1 && (
-                        <Badge variant="outline" className="h-4 px-1 text-[10px] bg-primary/5 text-primary border-primary/20">
-                          +{r.paginas_origem.length - 1}
-                        </Badge>
-                      )}
-                    </div>
-                    
-                    {r.paginas_origem && r.paginas_origem.length > 1 ? (
-                      <details className="mt-1 group">
-                        <summary className="cursor-pointer text-[10px] text-muted-foreground hover:text-foreground list-none flex items-center gap-1">
-                          <span className="group-open:rotate-90 transition-transform">▶</span>
-                          Ver todas as {r.paginas_origem.length} páginas
-                        </summary>
-                        <ul className="mt-1 space-y-0.5 pl-2 border-l ml-1 max-h-24 overflow-y-auto">
-                          {r.paginas_origem.map((p, i) => (
-                            <li key={i} className="truncate text-[10px]">
-                              <a href={p.url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
-                                {p.url}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
-                      </details>
-                    ) : (
-                      <span className="truncate text-xs text-muted-foreground">
-                        {truncar(r.alt || r.url_origem, 70)}
-                      </span>
-                    )}
-                  </div>
+                  <CelulaOrigem r={r} />
                 </TableCell>
                 <TableCell>
-                    {r.tem_tabela ? (
-                      <Badge className="bg-emerald-600 hover:bg-emerald-700 font-medium text-white border-none">
-                        <TableProperties className="size-3 mr-1" />
-                        Tabela
-                      </Badge>
-                    ) : (
-                      <Badge variant="destructive" className="bg-rose-600 hover:bg-rose-700 font-medium text-white border-none">
-                        Não tabela
-                      </Badge>
-                    )}
+                  {r.tem_tabela ? (
+                    <Badge className="bg-emerald-600 hover:bg-emerald-700 font-medium text-white border-none">
+                      <TableProperties className="size-3 mr-1" />
+                      Tabela
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="destructive"
+                      className="bg-rose-600 hover:bg-rose-700 font-medium text-white border-none"
+                    >
+                      Não tabela
+                    </Badge>
+                  )}
                 </TableCell>
                 <TableCell className="text-right">
                   <Button asChild variant="ghost" size="icon">
@@ -366,23 +642,13 @@ export function TaskResultsTable({ resultados }: Props) {
                     }}
                   />
                 </PaginationItem>
-                {Array.from({ length: totalPaginas }).slice(0, 5).map((_, i) => {
-                  const n = i + 1
-                  return (
-                    <PaginationItem key={n}>
-                      <PaginationLink
-                        href="#"
-                        isActive={paginaSegura === n}
-                        onClick={(e) => {
-                          e.preventDefault()
-                          setPaginaAtual(n)
-                        }}
-                      >
-                        {n}
-                      </PaginationLink>
-                    </PaginationItem>
-                  )
-                })}
+
+                <PaginacaoNumerica
+                  total={totalPaginas}
+                  atual={paginaSegura}
+                  onChange={setPaginaAtual}
+                />
+
                 <PaginationItem>
                   <PaginationNext
                     href="#"
@@ -403,6 +669,7 @@ export function TaskResultsTable({ resultados }: Props) {
   )
 }
 
+// ─── prévia da imagem ────────────────────────────────────────────────────────
 function PreviaImagem({ imagem }: { imagem: ImagemResultado }) {
   return (
     <Dialog>
@@ -447,16 +714,31 @@ function PreviaImagem({ imagem }: { imagem: ImagemResultado }) {
             <dt className="text-muted-foreground">Status</dt>
             <dd className="font-medium">
               {imagem.tem_tabela ? (
-                <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white border-none">Tabela</Badge>
+                <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white border-none">
+                  Tabela
+                </Badge>
               ) : (
-                <Badge variant="destructive" className="bg-rose-600 hover:bg-rose-700 text-white border-none">Não tabela</Badge>
+                <Badge
+                  variant="destructive"
+                  className="bg-rose-600 hover:bg-rose-700 text-white border-none"
+                >
+                  Não tabela
+                </Badge>
               )}
             </dd>
-            <dt className="text-muted-foreground">Páginas ({imagem.paginas_origem?.length || 1})</dt>
+            <dt className="text-muted-foreground">
+              Páginas ({imagem.paginas_origem?.length || 1})
+            </dt>
             <dd className="overflow-hidden">
-              <ScrollArea className={(imagem.paginas_origem?.length || 0) > 3 ? "h-32" : ""}>
+              <ScrollArea
+                className={(imagem.paginas_origem?.length || 0) > 3 ? "h-32" : ""}
+              >
                 <ul className="space-y-1">
-                  {(imagem.paginas_origem && imagem.paginas_origem.length > 0 ? imagem.paginas_origem : [{ url: imagem.url_pagina, titulo: imagem.titulo_pagina }]).map((p, i) => (
+                  {(
+                    imagem.paginas_origem && imagem.paginas_origem.length > 0
+                      ? imagem.paginas_origem
+                      : [{ url: imagem.url_pagina, titulo: imagem.titulo_pagina }]
+                  ).map((p, i) => (
                     <li key={i} className="truncate flex items-center gap-2">
                       <a
                         href={p.url}
@@ -465,7 +747,7 @@ function PreviaImagem({ imagem }: { imagem: ImagemResultado }) {
                         className="text-primary underline-offset-2 hover:underline text-xs truncate"
                         title={p.titulo || p.url}
                       >
-                        {p.url}
+                        {p.titulo || p.url}
                       </a>
                     </li>
                   ))}
@@ -487,5 +769,54 @@ function PreviaImagem({ imagem }: { imagem: ImagemResultado }) {
         </ScrollArea>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// ─── paginação com elli'psis ──────────────────────────────────────────────────
+function PaginacaoNumerica({
+  total,
+  atual,
+  onChange,
+}: {
+  total: number
+  atual: number
+  onChange: (p: number) => void
+}) {
+  // constrói a sequência de páginas a mostrar, com null = ell'ipsis
+  function paginas(): (number | null)[] {
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+
+    const vizinhos = 1 // números à volta da página actual
+    const inicio = Math.max(2, atual - vizinhos)
+    const fim    = Math.min(total - 1, atual + vizinhos)
+
+    const mostrar: (number | null)[] = [1]
+    if (inicio > 2)      mostrar.push(null)          // ellipsis esquerdo
+    for (let i = inicio; i <= fim; i++) mostrar.push(i)
+    if (fim < total - 1) mostrar.push(null)          // ellipsis direito
+    mostrar.push(total)
+    return mostrar
+  }
+
+  return (
+    <>
+      {paginas().map((p, idx) =>
+        p === null ? (
+          <PaginationItem key={`ell-${idx}`}>
+            <PaginationEllipsis />
+          </PaginationItem>
+        ) : (
+          <PaginationItem key={p}>
+            <PaginationLink
+              href="#"
+              isActive={atual === p}
+              onClick={(e) => { e.preventDefault(); onChange(p) }}
+            >
+              {p}
+            </PaginationLink>
+          </PaginationItem>
+        )
+      )}
+    </>
   )
 }

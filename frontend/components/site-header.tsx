@@ -18,7 +18,7 @@ import { Menu } from "lucide-react";
 const itensNav = [
   { titulo: "Painel", href: "/" },
   { titulo: "Tarefas", href: "/tarefas" },
-  { titulo: "Nova tarefa", href: "/tarefas/nova" },
+  { titulo: "Nova tarefa", href: "/tarefas?nova=true" },
   { titulo: "Detetar imagem", href: "/detetar" },
 ];
 

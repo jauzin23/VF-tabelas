@@ -45,7 +45,7 @@ export default function PaginaInicial() {
           </CardHeader>
           <CardContent>
             <Button asChild className="w-full">
-              <Link href="/tarefas/nova">
+              <Link href="/tarefas?nova=true">
                 Criar tarefa
                 <ArrowRight className="size-4" />
               </Link>
