@@ -273,11 +273,8 @@ export function TaskDetail({ id }: Props) {
         <Tabs defaultValue="progresso">
           <TabsList>
             <TabsTrigger value="progresso">Progresso</TabsTrigger>
-            <TabsTrigger value="resultados" className="gap-2">
+            <TabsTrigger value="resultados" className="gap-0">
               Resultados
-              <span className="inline-flex items-center justify-center rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium tabular-nums leading-none text-muted-foreground">
-                {tarefa.resultados?.length ?? 0}
-              </span>
             </TabsTrigger>
             <TabsTrigger value="config">Configuração</TabsTrigger>
           </TabsList>

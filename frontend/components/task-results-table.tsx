@@ -1,7 +1,7 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import * as XLSX from "xlsx"
+import { useEffect, useMemo, useState } from "react"
+import XLSX from "xlsx-js-style"
 import {
   ArrowUpDown,
   Check,
@@ -12,6 +12,8 @@ import {
   FileJson,
   Filter,
   Image as ImageIcon,
+  LayoutGrid,
+  List,
   Search,
   TableProperties,
 } from "lucide-react"
@@ -89,11 +91,11 @@ const POR_PAGINA = 20
 const CAMPOS_EXPORTAVEIS = [
   { id: "id",            label: "ID" },
   { id: "url_origem",    label: "URL Imagem" },
-  { id: "url_pagina",    label: "URL Página" },
+  { id: "url_pagina",    label: "Página Principal" },
   { id: "titulo_pagina", label: "Título da Página" },
-  { id: "alt",           label: "Alt text" },
-  { id: "tem_tabela",    label: "Tem tabela" },
-  { id: "paginas_origem",label: "Páginas de origem" },
+  { id: "alt",           label: "Texto Alt" },
+  { id: "tem_tabela",    label: "Contém Tabela" },
+  { id: "paginas_origem",label: "Todas as Localizações" },
 ] as const
 
 type CampoId = typeof CAMPOS_EXPORTAVEIS[number]["id"]
@@ -294,27 +296,25 @@ function ExportModal({ resultados }: { resultados: ImagemResultado[] }) {
       const obj: Record<string, unknown> = {}
       if (campos.has("id"))             obj["ID"] = r.id
       if (campos.has("url_origem"))     obj["URL Imagem"] = r.url_origem
-      if (campos.has("url_pagina"))     obj["URL Página"] = r.url_pagina
+      if (campos.has("url_pagina"))     obj["Página Principal"] = r.url_pagina
       if (campos.has("titulo_pagina"))  obj["Título"] = r.titulo_pagina
       if (campos.has("alt"))            obj["Alt"] = r.alt
-      if (campos.has("tem_tabela"))     obj["Tem Tabela"] = r.tem_tabela ? "Sim" : "Não"
+      if (campos.has("tem_tabela"))     obj["Contém Tabela"] = r.tem_tabela ? "Sim" : "Não"
       if (campos.has("paginas_origem")) {
         const pags = r.paginas_origem ?? []
-        // \n dentro de uma célula Excel (requer wrapText)
-        obj["Páginas de Origem"] = pags.map((p) => p.url).join("\n")
+        obj["Todas as Localizações"] = pags.map((p) => p.url).join("\n")
       }
       return obj
     })
 
     const ws = XLSX.utils.json_to_sheet(linhas)
 
-    // auto-largura das colunas: calcula o máximo de carateres por coluna
+    // auto-largura das colunas
     const cabecalhos = Object.keys(linhas[0] ?? {})
     const larguras = cabecalhos.map((cab) => {
       const maxConteudo = linhas.reduce((max, linha) => {
         const val = linha[cab]
         if (val == null) return max
-        // para células com newlines, usar a linha mais longa
         const maior = String(val).split("\n").reduce((m, l) => Math.max(m, l.length), 0)
         return Math.max(max, maior)
       }, 0)
@@ -322,20 +322,65 @@ function ExportModal({ resultados }: { resultados: ImagemResultado[] }) {
     })
     ws["!cols"] = larguras
 
-    // activar wrapText em todas as células de dados
+    // Aplicar estilos (wrapText e cores)
     const intervalo = XLSX.utils.decode_range(ws["!ref"] ?? "A1")
+    const idxTabela = cabecalhos.indexOf("Contém Tabela")
+
     for (let R = intervalo.s.r; R <= intervalo.e.r; R++) {
       for (let C = intervalo.s.c; C <= intervalo.e.c; C++) {
         const addr = XLSX.utils.encode_cell({ r: R, c: C })
         if (!ws[addr]) continue
-        ws[addr].s = { alignment: { wrapText: true, vertical: "top" } }
+
+        // Estilo base (alinhamento e bordas leves)
+        ws[addr].s = {
+          alignment: { 
+            wrapText: true, 
+            vertical: "center",
+            horizontal: R === 0 ? "center" : "left" 
+          },
+          font: { name: "Calibri", sz: 11 }
+        }
+
+        // Cabeçalho a negrito
+        if (R === 0) {
+          ws[addr].s.font.bold = true
+          ws[addr].s.fill = { fgColor: { rgb: "F2F2F2" } }
+        }
+
+        // Links clicáveis e azuis para colunas de URL
+        const colCabecalho = cabecalhos[C]
+        const colunasURL = ["URL Imagem", "Página Principal", "Todas as Localizações"]
+        
+        if (R > 0 && colunasURL.includes(colCabecalho)) {
+          const valor = ws[addr].v
+          if (valor && typeof valor === "string" && valor.startsWith("http")) {
+            // Se tiver múltiplas URLs (newline), SheetJS só suporta um link por célula.
+            // Usamos o primeiro URL como alvo principal.
+            const alvo = valor.split("\n")[0]
+            ws[addr].l = { Target: alvo, Tooltip: "Clique para abrir" }
+            ws[addr].s.font.color = { rgb: "0563C1" }
+            ws[addr].s.font.underline = true
+          }
+        }
+
+        // Cor condicional na coluna "Contém Tabela"
+        if (R > 0 && C === idxTabela) {
+          const valor = ws[addr].v
+          if (valor === "Sim") {
+            ws[addr].s.fill = { fgColor: { rgb: "C6EFCE" } } // Verde suave
+            ws[addr].s.font = { color: { rgb: "006100" }, bold: true }
+          } else {
+            ws[addr].s.fill = { fgColor: { rgb: "FFC7CE" } } // Vermelho suave
+            ws[addr].s.font = { color: { rgb: "9C0006" }, bold: true }
+          }
+          ws[addr].s.alignment.horizontal = "center"
+        }
       }
     }
 
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, "Resultados")
-    // xlsx-style não é necessário — writeFile com bookSST trata wrapText via sheetStubs
-    XLSX.writeFile(wb, nomeFicheiro("xlsx"), { cellStyles: true })
+    XLSX.writeFile(wb, nomeFicheiro("xlsx"))
     toast.success(`${linhas.length} resultado(s) exportados como Excel`)
     setAberto(false)
   }
@@ -451,6 +496,16 @@ export function TaskResultsTable({ resultados }: Props) {
   const [campo, setCampo] = useState<CampoOrdenacao>("tem_tabela")
   const [direcao, setDirecao] = useState<Direcao>("desc")
   const [paginaAtual, setPaginaAtual] = useState(1)
+  const [porPagina, setPorPagina] = useState(20)
+  const [vista, setVista] = useState<"tabela" | "grelha">("tabela")
+
+  // Scroll para o topo ao mudar de página
+  useEffect(() => {
+    const el = document.getElementById("resultados-ancora")
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }, [paginaAtual, porPagina])
 
   const filtradas = useMemo(() => {
     let lista = [...resultados]
@@ -481,10 +536,10 @@ export function TaskResultsTable({ resultados }: Props) {
     return lista
   }, [resultados, pesquisa, filtroEtiqueta, campo, direcao])
 
-  const totalPaginas = Math.max(1, Math.ceil(filtradas.length / POR_PAGINA))
+  const totalPaginas = Math.max(1, Math.ceil(filtradas.length / porPagina))
   const paginaSegura = Math.min(paginaAtual, totalPaginas)
-  const inicio = (paginaSegura - 1) * POR_PAGINA
-  const visiveis = filtradas.slice(inicio, inicio + POR_PAGINA)
+  const inicio = (paginaSegura - 1) * porPagina
+  const visiveis = filtradas.slice(inicio, inicio + porPagina)
 
   function alternarOrdenacao(c: CampoOrdenacao) {
     if (campo === c) {
@@ -513,7 +568,7 @@ export function TaskResultsTable({ resultados }: Props) {
   }
 
   return (
-    <Card>
+    <Card id="resultados-ancora">
       <CardHeader className="flex flex-col gap-4 border-b">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <CardTitle className="text-base font-semibold">
@@ -521,6 +576,47 @@ export function TaskResultsTable({ resultados }: Props) {
             {resultados.length === 1 ? "" : "s"}
           </CardTitle>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 mr-2">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Mostrar:</span>
+              <Select 
+                value={String(porPagina)} 
+                onValueChange={(v) => {
+                  setPorPagina(Number(v))
+                  setPaginaAtual(1)
+                }}
+              >
+                <SelectTrigger className="h-8 w-[70px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                  <SelectItem value="200">200</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center rounded-lg border bg-muted p-1 mr-2">
+              <Button
+                variant={vista === "tabela" ? "secondary" : "ghost"}
+                size="icon"
+                className="size-7"
+                onClick={() => setVista("tabela")}
+                title="Vista em tabela"
+              >
+                <List className="size-4" />
+              </Button>
+              <Button
+                variant={vista === "grelha" ? "secondary" : "ghost"}
+                size="icon"
+                className="size-7"
+                onClick={() => setVista("grelha")}
+                title="Vista em grelha"
+              >
+                <LayoutGrid className="size-4" />
+              </Button>
+            </div>
             <ExportModal resultados={resultados} />
           </div>
         </div>
@@ -557,76 +653,126 @@ export function TaskResultsTable({ resultados }: Props) {
           </Select>
         </div>
       </CardHeader>
-
+      
       <CardContent className="p-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-16">Prévia</TableHead>
-              <TableHead className="min-w-[220px]">Imagem / Página</TableHead>
-              <TableHead>
-                <button
-                  type="button"
-                  onClick={() => alternarOrdenacao("tem_tabela")}
-                  className="flex items-center gap-1 hover:text-foreground"
-                >
-                  Status
-                  <ArrowUpDown className="size-3" />
-                </button>
-              </TableHead>
-              <TableHead className="w-[1%] text-right">Abrir</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {visiveis.length === 0 && (
+        {vista === "tabela" ? (
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell
-                  colSpan={4}
-                  className="h-24 text-center text-muted-foreground"
-                >
-                  Nenhum resultado corresponde aos filtros.
-                </TableCell>
+                <TableHead className="w-16">Prévia</TableHead>
+                <TableHead className="min-w-[220px]">Imagem / Página</TableHead>
+                <TableHead>
+                  <button
+                    type="button"
+                    onClick={() => alternarOrdenacao("tem_tabela")}
+                    className="flex items-center gap-1 hover:text-foreground"
+                  >
+                    Status
+                    <ArrowUpDown className="size-3" />
+                  </button>
+                </TableHead>
+                <TableHead className="w-[1%] text-right">Abrir</TableHead>
               </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visiveis.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={4}
+                    className="h-24 text-center text-muted-foreground"
+                  >
+                    Nenhum resultado corresponde aos filtros.
+                  </TableCell>
+                </TableRow>
+              )}
+              {visiveis.map((r) => (
+                <TableRow key={r.id} className="align-middle">
+                  <TableCell>
+                    <PreviaImagem imagem={r} />
+                  </TableCell>
+                  <TableCell>
+                    <CelulaOrigem r={r} />
+                  </TableCell>
+                  <TableCell>
+                    {r.tem_tabela ? (
+                      <Badge className="bg-emerald-600 hover:bg-emerald-700 font-medium text-white border-none">
+                        <TableProperties className="size-3 mr-1" />
+                        Tabela
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="destructive"
+                        className="bg-rose-600 hover:bg-rose-700 font-medium text-white border-none"
+                      >
+                        Não tabela
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button asChild variant="ghost" size="icon">
+                      <a
+                        href={r.url_pagina}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Abrir página de origem"
+                      >
+                        <ExternalLink className="size-4" />
+                      </a>
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <div className="p-4">
+            {visiveis.length === 0 ? (
+              <div className="flex h-32 items-center justify-center text-muted-foreground">
+                Nenhum resultado corresponde aos filtros.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+                {visiveis.map((r) => (
+                  <div 
+                    key={r.id} 
+                    className="group relative flex flex-col overflow-hidden rounded-xl border bg-card shadow-sm transition-all hover:shadow-md hover:border-primary/20"
+                  >
+                    {/* Header / Imagem com Aspect Ratio */}
+                    <div className="relative aspect-[4/3] w-full overflow-hidden bg-muted">
+                      <PreviaImagem imagem={r} triggerOnly />
+                      
+                      {/* Badge de Status Flutuante */}
+                      <div className="absolute top-2.5 right-2.5 z-10">
+                        {r.tem_tabela ? (
+                          <Badge className="bg-emerald-600/90 text-white backdrop-blur-md border-none shadow-sm font-medium">
+                            Tabela
+                          </Badge>
+                        ) : (
+                          <Badge variant="destructive" className="bg-rose-600/90 text-white backdrop-blur-md border-none shadow-sm font-medium">
+                            Não tabela
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Ícone de lupa ao passar o rato (indicador visual) */}
+                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/0 opacity-0 transition-all group-hover:bg-black/10 group-hover:opacity-100 pointer-events-none">
+                         <div className="rounded-full bg-white/20 p-2 backdrop-blur-md">
+                            <ImageIcon className="size-5 text-white" />
+                         </div>
+                      </div>
+                    </div>
+
+                    {/* Conteúdo / Info */}
+                    <div className="flex flex-col p-4 pt-3 gap-3">
+                      <CelulaOrigem r={r} />
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
-            {visiveis.map((r) => (
-              <TableRow key={r.id} className="align-top">
-                <TableCell>
-                  <PreviaImagem imagem={r} />
-                </TableCell>
-                <TableCell>
-                  <CelulaOrigem r={r} />
-                </TableCell>
-                <TableCell>
-                  {r.tem_tabela ? (
-                    <Badge className="bg-emerald-600 hover:bg-emerald-700 font-medium text-white border-none">
-                      <TableProperties className="size-3 mr-1" />
-                      Tabela
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="destructive"
-                      className="bg-rose-600 hover:bg-rose-700 font-medium text-white border-none"
-                    >
-                      Não tabela
-                    </Badge>
-                  )}
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button asChild variant="ghost" size="icon">
-                    <a
-                      href={r.url_pagina}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label="Abrir página de origem"
-                    >
-                      <ExternalLink className="size-4" />
-                    </a>
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+          </div>
+        )}
+
 
         {totalPaginas > 1 && (
           <div className="border-t p-3">
@@ -670,33 +816,57 @@ export function TaskResultsTable({ resultados }: Props) {
 }
 
 // ─── prévia da imagem ────────────────────────────────────────────────────────
-function PreviaImagem({ imagem }: { imagem: ImagemResultado }) {
+function PreviaImagem({ 
+  imagem, 
+  triggerOnly = false 
+}: { 
+  imagem: ImagemResultado;
+  triggerOnly?: boolean;
+}) {
+  const trigger = triggerOnly ? (
+    <div className="group relative block size-full cursor-zoom-in overflow-hidden outline-none">
+       {/* eslint-disable-next-line @next/next/no-img-element */}
+       <img
+        src={imagem.url_origem || "/placeholder.svg"}
+        alt={imagem.alt || "Prévia"}
+        referrerPolicy="no-referrer"
+        className="size-full object-cover transition-transform duration-500 group-hover:scale-110"
+        onError={(e) => {
+          ;(e.currentTarget as HTMLImageElement).style.display = "none"
+        }}
+      />
+      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+    </div>
+  ) : (
+    <button
+      type="button"
+      className="block size-12 overflow-hidden rounded-md border bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label="Ampliar prévia"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={imagem.url_origem || "/placeholder.svg"}
+        alt={imagem.alt || "Prévia"}
+        referrerPolicy="no-referrer"
+        className="size-full object-cover"
+        onError={(e) => {
+          ;(e.currentTarget as HTMLImageElement).style.display = "none"
+        }}
+      />
+    </button>
+  )
+
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <button
-          type="button"
-          className="block size-12 overflow-hidden rounded-md border bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label="Ampliar prévia"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={imagem.url_origem || "/placeholder.svg"}
-            alt={imagem.alt || "Prévia"}
-            referrerPolicy="no-referrer"
-            className="size-full object-cover"
-            onError={(e) => {
-              ;(e.currentTarget as HTMLImageElement).style.display = "none"
-            }}
-          />
-        </button>
+        {trigger}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="truncate">
+      <DialogContent className="sm:max-w-2xl overflow-hidden">
+        <DialogHeader className="min-w-0">
+          <DialogTitle className="break-words leading-tight">
             {imagem.titulo_pagina || nomeDominio(imagem.url_pagina)}
           </DialogTitle>
-          <DialogDescription className="truncate">
+          <DialogDescription className="break-words">
             {imagem.alt || imagem.url_origem}
           </DialogDescription>
         </DialogHeader>
@@ -727,7 +897,7 @@ function PreviaImagem({ imagem }: { imagem: ImagemResultado }) {
               )}
             </dd>
             <dt className="text-muted-foreground">
-              Páginas ({imagem.paginas_origem?.length || 1})
+              Origens ({imagem.paginas_origem?.length || 1})
             </dt>
             <dd className="overflow-hidden">
               <ScrollArea
@@ -754,13 +924,13 @@ function PreviaImagem({ imagem }: { imagem: ImagemResultado }) {
                 </ul>
               </ScrollArea>
             </dd>
-            <dt className="text-muted-foreground mt-1">Origem</dt>
-            <dd className="truncate">
+            <dt className="text-muted-foreground mt-1 shrink-0">URL da Imagem</dt>
+            <dd className="min-w-0">
               <a
                 href={imagem.url_origem}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary underline-offset-2 hover:underline"
+                className="text-primary underline-offset-2 hover:underline break-all text-xs"
               >
                 {imagem.url_origem}
               </a>
