@@ -197,7 +197,7 @@ export function TaskDetail({ id }: Props) {
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-semibold tracking-tight md:text-2xl truncate">
                   {ehLote
-                    ? `Lote com ${urls.length} URLs`
+                    ? `Tarefa com ${urls.length} URLs`
                     : nomeDominio(tarefa.url_alvo)}
                 </h1>
                 <StateBadge estado={tarefa.estado} />

@@ -12,7 +12,7 @@ export default function PaginaTarefas() {
             Tarefas
           </h1>
           <p className="text-balance text-muted-foreground">
-            Pesquisa, filtra e ordena as tarefas criadas neste navegador.
+            Pesquisa, filtra e ordena tarefas.
           </p>
         </div>
         <Button asChild>

@@ -42,16 +42,16 @@ export const api = {
   listarTarefas: () => request<Tarefa[]>("/api/tarefas"),
   listarTarefa: (id: string) => request<Tarefa>(`/api/tarefas/${id}`),
 
-  criarTarefa: (url: string, opcoes?: OpcoesTarefa) =>
+  criarTarefa: (url: string, opcoes?: OpcoesTarefa, sse: boolean = true) =>
     request<Tarefa>("/api/tarefas", {
       method: "POST",
-      body: JSON.stringify({ url, opcoes }),
+      body: JSON.stringify({ url, opcoes, sse }),
     }),
 
-  criarTarefaLote: (urls: string[], opcoes?: OpcoesTarefa) =>
+  criarTarefaLote: (urls: string[], opcoes?: OpcoesTarefa, sse: boolean = true) =>
     request<Tarefa>("/api/paginacao-multurls", {
       method: "POST",
-      body: JSON.stringify({ urls, opcoes }),
+      body: JSON.stringify({ urls, opcoes, sse }),
     }),
 
   apagarTarefa: (id: string) =>
