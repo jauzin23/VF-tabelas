@@ -6,6 +6,7 @@ import {
   Image as ImageIcon,
   RotateCcw,
   TableProperties,
+  Trash2,
   Upload,
   XCircle,
 } from "lucide-react"
@@ -191,7 +192,7 @@ export function ImageDetector() {
                 onClick={limpar}
                 disabled={ficheiros.some((f) => f.aProcessar)}
               >
-                <RotateCcw className="size-4" />
+                <Trash2 className="size-4" />
                 Limpar tudo
               </Button>
               <Button
@@ -233,8 +234,10 @@ export function ImageDetector() {
                 return (
                   <div
                     key={img.id}
-                    className="flex items-center gap-4 rounded-lg border p-3"
+                    className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 rounded-lg border p-3 bg-card hover:bg-accent/5 transition-colors overflow-hidden"
                   >
+                    {/* Thumbnail and Info wrapper for better stacking */}
+                    <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
                     {/* Thumbnail */}
                     <button
                       onClick={() => setPreviewId(img.id)}
@@ -286,9 +289,22 @@ export function ImageDetector() {
                         </div>
                       )}
                     </div>
+                  </div>
+                  {/* End of Thumbnail and Info wrapper */}
 
                     {/* Actions */}
-                    <div className="flex gap-2 shrink-0">
+                    <div className="flex items-center justify-end gap-2 shrink-0 sm:w-auto w-full border-t sm:border-t-0 pt-2 sm:pt-0">
+                      {(temResultado || img.erro) && !img.aProcessar && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          title="Re-analisar"
+                          onClick={() => detetarUm(img.id)}
+                          className="h-8 w-8 p-0"
+                        >
+                          <RotateCcw className="size-4 text-muted-foreground hover:text-primary" />
+                        </Button>
+                      )}
                       {!temResultado && !img.erro && (
                         <Button
                           size="sm"
@@ -309,8 +325,9 @@ export function ImageDetector() {
                         variant="outline"
                         onClick={() => removerFicheiro(img.id)}
                         disabled={img.aProcessar}
+                        className="h-8 w-8 p-0 border-destructive/20 hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
                       >
-                        <RotateCcw className="size-4" />
+                        <Trash2 className="size-4" />
                       </Button>
                     </div>
                   </div>
@@ -342,7 +359,7 @@ export function ImageDetector() {
                     />
                   </div>
                   <div className="border-t pt-4">
-                    <p className="font-medium mb-2 truncate" title={img.file.name}>
+                    <p className="font-medium mb-2 break-all sm:truncate text-base" title={img.file.name}>
                       {img.file.name}
                     </p>
                     <p className="text-sm text-muted-foreground mb-4">
