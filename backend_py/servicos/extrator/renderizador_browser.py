@@ -140,11 +140,14 @@ async () => {
 
 
 class GestorBrowser:
-    def __init__(self) -> None:
+    def __init__(self, max_tabs: int = 3) -> None:
         self._ctx_pw = None
         self._browser = None
         self._contexto = None
         self._bloqueio = asyncio.Lock()
+        # Semáforo global: limita tabs Chromium simultâneos para toda a tarefa.
+        # Isto previne saturação quando entry-points + paginação correm em paralelo.
+        self._sem_tabs = asyncio.Semaphore(max_tabs)
         self._aberto = False
 
     async def iniciar(self) -> None:
@@ -153,13 +156,13 @@ class GestorBrowser:
         async with self._bloqueio:
             if self._aberto:
                 return
-            registo.info(f"[Browser] A iniciar ({_MOTOR_BROWSER})...")
+            registo.info(f"[Browser] A iniciar ({_MOTOR_BROWSER}, max_tabs={self._sem_tabs._value})...")
             self._ctx_pw = await _async_pw().start()
             argumentos = [
                 "--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox",
                 "--disable-blink-features=AutomationControlled",
             ]
-            self._browser = await self._ctx_pw.chromium.launch(headless=True, args=argumentos)
+            self._browser = await self._ctx_pw.chromium.launch(headless=False, args=argumentos)
             self._contexto = await self._browser.new_context(
                 user_agent=_USER_AGENT, locale="pt-PT",
                 viewport={"width": 1920, "height": 1080},
@@ -186,15 +189,19 @@ class GestorBrowser:
 
     @asynccontextmanager
     async def pagina(self):
+        """Abre uma página nova dentro do semáforo global de tabs.
+        Qualquer coroutine que chame este método espera se o limite de tabs activos já foi atingido.
+        """
         await self.iniciar()
-        pagina = await self._contexto.new_page()
-        try:
-            yield pagina
-        finally:
+        async with self._sem_tabs:
+            pagina = await self._contexto.new_page()
             try:
-                await pagina.close()
-            except Exception:
-                pass
+                yield pagina
+            finally:
+                try:
+                    await pagina.close()
+                except Exception:
+                    pass
 
 
 async def _bloquear_recurso(rota) -> None:
@@ -268,7 +275,9 @@ async def renderizar_e_extrair(
     tempo_limite_ms: int = 30000,
     capturar_api: bool = True,
     ignorar_nav_footer: bool = False,
+    modo_rapido: bool = False,
 ) -> dict[str, Any]:
+    """modo_rapido=True: waits mais curtos para páginas de paginação (já sabemos que o site funciona)."""
     registo_pedidos: list[dict[str, Any]] = []
     api_capturada: dict[str, Any] | None = None
 
@@ -334,23 +343,27 @@ async def renderizar_e_extrair(
 
         async def _aguardar_componentes():
             try:
-                # Sono mínimo obrigatório para permitir o início da hidratação JS
-                await asyncio.sleep(2.0)
+                # Modo rápido (paginação): sleep mínimo — o site já está "quente" no contexto
+                espera_inicial = 0.6 if modo_rapido else 2.0
+                espera_apos_selector = 0.5 if modo_rapido else 1.5
+                await asyncio.sleep(espera_inicial)
                 # Esperar por indicadores comuns de conteúdo ou qualquer imagem
                 await pagina.wait_for_selector('.ant-pagination, .ant-list-item, .ant-card, .article, .content, img', timeout=5000)
-                # Sono adicional após o seletor aparecer
-                await asyncio.sleep(1.5)
+                await asyncio.sleep(espera_apos_selector)
             except:
                 pass
 
+        tarefas_estabilizacao = [
+            pagina.evaluate(JS_SCROLL),
+            pagina.evaluate(JS_AGUARDAR_ESTABILIDADE),
+            _aguardar_componentes(),
+        ]
+        # Expansão de menus só é relevante na página de entrada (não em paginação)
+        if not modo_rapido:
+            tarefas_estabilizacao.append(pagina.evaluate(JS_EXPANDIR_MENUS))
+
         try:
-            await asyncio.gather(
-                pagina.evaluate(JS_SCROLL),
-                pagina.evaluate(JS_EXPANDIR_MENUS),
-                pagina.evaluate(JS_AGUARDAR_ESTABILIDADE),
-                _aguardar_componentes(),
-                return_exceptions=True
-            )
+            await asyncio.gather(*tarefas_estabilizacao, return_exceptions=True)
         except Exception as e:
             registo.warning(f"[Browser] Erro na estabilização: {e}")
         finally:

@@ -448,11 +448,13 @@ async def _processar_browser_paralelo(
     max_total: int | None,
     max_por_pagina: int | None,
     paginas_max: int,
-    concorrencia: int,
     tempo_limite_ms: int,
     retrochamadas: dict[str, Any],
     ignorar_nav_footer: bool = False,
 ) -> list[str]:
+    """Processa páginas de paginação via browser em paralelo.
+    A concorrência real é controlada pelo semáforo global em GestorBrowser.pagina().
+    """
     urls = construir_urls_fanout(
         pag, url_base, pagina_inicial_excluir=pag.pagina_atual,
         max_paginas=paginas_max,
@@ -460,22 +462,20 @@ async def _processar_browser_paralelo(
     if not urls:
         return []
 
-    semaforo = asyncio.Semaphore(concorrencia)
     detalhes: list[str] = []
     bloqueio_detalhe = asyncio.Lock()
     host_alvo = normalizar_host(urlparse(url_base).netloc)
 
     async def _uma_pagina(url: str) -> None:
-        async with semaforo:
-            try:
-                dados = await renderizar_e_extrair(
-                    url, gestor, tempo_limite_ms=tempo_limite_ms, capturar_api=False,
-                    ignorar_nav_footer=ignorar_nav_footer,
-                )
-            except Exception as e:
-                registo.warning(f"[BrowserParalelo] {url}: {e}")
-                await estado.incrementar("paginas_erro")
-                return
+        try:
+            dados = await renderizar_e_extrair(
+                url, gestor, tempo_limite_ms=tempo_limite_ms, capturar_api=False,
+                ignorar_nav_footer=ignorar_nav_footer, modo_rapido=True,
+            )
+        except Exception as e:
+            registo.warning(f"[BrowserParalelo] {url}: {e}")
+            await estado.incrementar("paginas_erro")
+            return
 
         brutas = dados.get("imagens") or []
         await _processar_imagens_encontradas(
@@ -613,6 +613,7 @@ async def _rastrear_detalhes(
                                 dados_b = await renderizar_e_extrair(
                                     url, gestor_browser, tempo_limite_ms=tempo_limite_ms,
                                     capturar_api=False, ignorar_nav_footer=ignorar_nav_footer,
+                                    modo_rapido=True, # Detalhes em lote também usam modo rápido
                                 )
                                 html_b = dados_b.get("html")
                                 if html_b:
@@ -704,7 +705,14 @@ async def rastrear_site(
     tempo_limite_ms = _opc_int("tempo_limite_pagina_ms", env_int("PAGE_TIMEOUT_MS", 30000))
     max_total = opcoes.get("max_imagens_total")
     max_por_pagina = opcoes.get("max_imagens_por_pagina")
-    concorrencia = max(1, _opc_int("concorrencia", env_int("CRAWLER_CONCURRENCY", 10)))
+    concorrencia = _opc_int("concorrencia", env_int("CRAWLER_CONCURRENCY", 0))
+    if concorrencia <= 0:
+        concorrencia = max(4, (os.cpu_count() or 4) * 2)
+
+    concorrencia_browser = _opc_int("concorrencia_browser", env_int("BROWSER_CONCURRENCY", 0))
+    if concorrencia_browser <= 0:
+        concorrencia_browser = 3
+
     seguir_paginacao = opcoes.get("seguir_paginacao", True)
     seguir_detalhe = opcoes.get("seguir_detalhe", True)
     tempo_limite_job = _opc_int("tempo_limite_job_segundos", env_int("JOB_TIMEOUT_S", 600))
@@ -724,7 +732,7 @@ async def rastrear_site(
     dir_cache_http = os.path.join(caminho_dados, "tarefas", str(id_tarefa), "cache", "http")
 
     cliente = construir_cliente(diretorio_cache=dir_cache_http, tempo_limite=tempo_limite_ms / 1000)
-    gestor_browser = GestorBrowser()
+    gestor_browser = GestorBrowser(max_tabs=concorrencia_browser)
     try:
         dir_tarefa = os.path.join(caminho_dados, "tarefas", str(id_tarefa))
         os.makedirs(dir_tarefa, exist_ok=True)
@@ -833,7 +841,7 @@ async def rastrear_site(
                     sementes_detalhe.extend(await _processar_browser_paralelo(
                         gestor_browser, pag=pag, url_base=url_inicial,
                         estado=estado, max_total=max_total, max_por_pagina=max_por_pagina,
-                        paginas_max=paginas_max_uso, concorrencia=concorrencia,
+                        paginas_max=paginas_max_uso,
                         tempo_limite_ms=tempo_limite_ms,
                         retrochamadas=retrochamadas,
                         ignorar_nav_footer=ignorar_nav_footer,
@@ -854,12 +862,21 @@ async def rastrear_site(
     ignorar_nav_footer = e_multi
 
     try:
-        tarefas_iniciais = [asyncio.create_task(_processar_ponto_entrada(u, ignorar_nav_footer=ignorar_nav_footer)) for u in urls_iniciais]
-        resultados_sementes = await asyncio.gather(*tarefas_iniciais)
-        
         todas_sementes = []
-        for res in resultados_sementes:
-            todas_sementes.extend(res)
+        if e_multi:
+            # Entry-points em paralelo — o semáforo global em GestorBrowser.pagina()
+            # garante que no máximo concorrencia_browser tabs Chromium ficam activos
+            # em simultâneo, prevenindo saturação sem sacrificar paralelismo.
+            tarefas_iniciais = [
+                asyncio.create_task(_processar_ponto_entrada(u, ignorar_nav_footer=ignorar_nav_footer))
+                for u in urls_iniciais
+            ]
+            resultados_sementes = await asyncio.gather(*tarefas_iniciais)
+            for res in resultados_sementes:
+                todas_sementes.extend(res)
+        else:
+            sementes = await _processar_ponto_entrada(urls_iniciais[0], ignorar_nav_footer=False)
+            todas_sementes.extend(sementes)
 
         if seguir_detalhe:
             await _rastrear_detalhes(

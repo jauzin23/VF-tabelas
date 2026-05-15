@@ -13,6 +13,43 @@ Ferramenta de análise de tabelas em websites. Rastreia websites, extrai imagens
 
 ---
 
+## Como funciona (por dentro)
+
+### Pipeline de análise — URL único
+
+Quando é submetido um URL, o backend cria uma tarefa assíncrona e lança o crawler. O progresso é transmitido ao frontend em tempo real via **SSE (Server-Sent Events)** — o backend empurra eventos ("página visitada", "imagem encontrada", "análise concluída") sem polling do lado do cliente.
+
+### Modo multi-URL
+
+No modo multi-URL (`POST /api/paginacao-multurls`), cada URL da lista é tratado como um ponto de entrada independente. As tarefas partilham um **gestor de browser singleton** com um semáforo global que limita os tabs Chromium simultâneos, evitando saturação de memória quando vários crawls correm em paralelo. Existe ainda uma fila global FIFO que serializa a execução quando os recursos estão sob pressão.
+
+### Crawler — estratégia de dupla abordagem
+
+O crawler combina duas camadas de extração para lidar com sites estáticos e dinâmicos:
+
+1. **Camada estática (httpx)** — faz fetch do HTML diretamente e extrai imagens via parsing do DOM. Rápido e sem overhead, usado como pre-flight para qualquer URL.
+
+2. **Camada dinâmica (Patchright/Chromium)** — controla um browser headless real. Após o `domcontentloaded`, executa scroll incremental, aguarda estabilização do DOM (contagem de `img` e `a[href]` estabilizada em 6 amostras consecutivas) e expande menus. Capta também respostas XHR/fetch para detetar APIs de paginação internas.
+
+**Deteção e seguimento de paginação:** o crawler inspeciona o DOM à procura de padrões conhecidos (Ant Design pagination, links numéricos, atributo `rel=next`, etc.). Quando deteta uma API paginada via XHR, constrói as URLs das páginas restantes e processa-as em paralelo com concorrência controlada.
+
+**Filtragem de imagens:** são descartadas automaticamente imagens abaixo de dimensão mínima configurável (`MIN_IMAGE_WIDTH` × `MIN_IMAGE_HEIGHT`), SVGs, data URIs, tiles de mapa e padrões de URL associados a ícones/logos/avatares.
+
+### Análise de imagens — pipeline IA em duas fases
+
+Cada imagem recolhida passa por dois modelos do Microsoft **Table Transformer** (baseados em DETR):
+
+| Fase | Modelo | O que faz |
+| --- | --- | --- |
+| **S1 — Deteção** | `table-transformer-detection` | Analisa a imagem completa e devolve bounding boxes com pontuação de confiança para regiões candidatas a tabela. |
+| **S2 — Validação estrutural** | `table-transformer-structure-recognition` | Recebe o recorte da região candidata e conta linhas, colunas e cabeçalhos. Valida alinhamento em grelha e aspeto geométrico. |
+
+A confirmação final exige que **ambas as fases concordem**: S1 deteta uma região com confiança suficiente **e** S2 confirma estrutura mínima (≥ 2 linhas × ≥ 2 colunas, alinhamento linha-coluna sobrepostos). Existem regras adicionais para rejeitar falsos positivos comuns — calendários, grelhas de cards, blocos de título técnico e banners panorâmicos com UI embebida.
+
+As análises correm com concorrência configurável (`ANALYSIS_CONCURRENCY`) via `asyncio.gather`, com suporte transparente a **CPU ou GPU (CUDA)** detetado em runtime pelo PyTorch.
+
+---
+
 ## Funcionalidades
 
 | Funcionalidade | Descrição |

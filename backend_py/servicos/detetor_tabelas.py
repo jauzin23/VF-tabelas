@@ -320,6 +320,48 @@ def detetar_tabelas_em_imagem_pil(imagem: Image.Image) -> tuple:
                 n_cabecalhos = estrutura.get("n_cabecalhos", 0)
                 tem_cabecalhos = n_cabecalhos > 0
 
+                # ── Rejeitar padrões típicos de falsos positivos ─────────────────────
+                # A) Layout esparso: poucas linhas + muitas colunas + S1 fraco
+                #    → flyers de calendário (ex: grelha de datas), legendas numeradas
+                if n_linhas <= 5 and n_colunas >= 4 and n_cabecalhos <= 1 and pontuacao < 0.80:
+                    registo.info(
+                        f"  [SPARSE-REJECT] #{idx+1} {n_linhas}Lx{n_colunas}C "
+                        f"cab={n_cabecalhos} s1={pontuacao:.3f} — layout esparso"
+                    )
+                    continue
+
+                # B) Grelha de 4+ colunas com muitas linhas mas S1 e headers muito fracos
+                #    → flyers de eventos com blocos de datas organizados em grelha
+                if n_colunas >= 4 and n_linhas >= 8 and n_cabecalhos <= 1 and pontuacao < 0.70:
+                    registo.info(
+                        f"  [FLYER-REJECT] #{idx+1} {n_linhas}Lx{n_colunas}C "
+                        f"cab={n_cabecalhos} s1={pontuacao:.3f} — layout tipo flyer"
+                    )
+                    continue
+
+                # C) Bloco de título de 2 colunas com muitas linhas e S1 muito baixo
+                #    → blocos de informação em documentos técnicos (plantas, desenhos)
+                if n_colunas <= 2 and n_linhas >= 10 and pontuacao < 0.65 and n_cabecalhos <= 2:
+                    registo.info(
+                        f"  [TITLE-BLOCK-REJECT] #{idx+1} {n_linhas}Lx{n_colunas}C "
+                        f"s1={pontuacao:.3f} — bloco de título técnico"
+                    )
+                    continue
+
+                # D) Screenshot de UI embutido em imagem banner muito larga
+                #    → ecrãs de app/website numa imagem promocional panorâmica
+                #    A tabela cobre apenas uma faixa lateral estreita (<45% da largura)
+                _prop_imagem = imagem.width / (imagem.height + 1e-6)
+                if _prop_imagem > 1.8:
+                    _cobertura_h = abs(x2 - x1) / imagem.width
+                    if _cobertura_h < 0.45 and pontuacao < 0.85:
+                        registo.info(
+                            f"  [BANNER-REJECT] #{idx+1} banner ({_prop_imagem:.2f}:1) "
+                            f"cobertura={_cobertura_h:.0%} s1={pontuacao:.3f} — UI em banner"
+                        )
+                        continue
+                # ─────────────────────────────────────────────────────────────────────
+
                 if pontuacao >= S1_LIMIAR_ALTA_CONFIANCA:
                     limiar_confirmacao = CONFIANCA_MIN_ESTRUTURA
                     if qualidade < CONFIANCA_MIN_ESTRUTURA_CONFIRMACAO:
