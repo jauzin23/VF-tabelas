@@ -1,11 +1,11 @@
-"use client"
+"use client";
 
-import { useState, useEffect, Suspense } from "react"
-import { useSearchParams, useRouter } from "next/navigation"
-import { PlusCircle } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { TaskList } from "@/components/task-list"
-import { TaskCreateForm } from "@/components/task-create-form"
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { PlusCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TaskList } from "@/components/task-list";
+import { TaskCreateForm } from "@/components/task-create-form";
 import {
   Dialog,
   DialogContent,
@@ -13,22 +13,22 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 
 function TarefasContent() {
-  const searchParams = useSearchParams()
-  const router = useRouter()
-  const [open, setOpen] = useState(false)
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     if (searchParams.get("nova") === "true") {
-      setOpen(true)
+      setOpen(true);
       // Limpar o parâmetro da URL sem recarregar
-      const params = new URLSearchParams(searchParams.toString())
-      params.delete("nova")
-      router.replace(`/tarefas?${params.toString()}`, { scroll: false })
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("nova");
+      router.replace(`/tarefas?${params.toString()}`, { scroll: false });
     }
-  }, [searchParams, router])
+  }, [searchParams, router]);
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
@@ -38,10 +38,10 @@ function TarefasContent() {
             Tarefas
           </h1>
           <p className="text-balance text-muted-foreground">
-            Pesquisa, filtra e ordena tarefas.
+            Pesquisa, filtra e ordena tarefas
           </p>
         </div>
-        
+
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -53,8 +53,8 @@ function TarefasContent() {
             <DialogHeader>
               <DialogTitle>Nova tarefa</DialogTitle>
               <DialogDescription>
-                Configura os parâmetros de extração e submete um URL único ou um lote
-                de URLs para processamento.
+                Configura os parâmetros de extração e submete um URL único ou um
+                lote de URLs para processamento.
               </DialogDescription>
             </DialogHeader>
             <TaskCreateForm noCard />
@@ -63,7 +63,7 @@ function TarefasContent() {
       </div>
       <TaskList />
     </div>
-  )
+  );
 }
 
 export default function PaginaTarefas() {
@@ -71,5 +71,5 @@ export default function PaginaTarefas() {
     <Suspense fallback={<div>Carregando...</div>}>
       <TarefasContent />
     </Suspense>
-  )
+  );
 }

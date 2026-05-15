@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowUpDown,
   ExternalLink,
@@ -10,23 +10,18 @@ import {
   Search,
   Trash2,
   Inbox,
-} from "lucide-react"
-import { toast } from "sonner"
+} from "lucide-react";
+import { toast } from "sonner";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -34,9 +29,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Progress } from "@/components/ui/progress"
+} from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,7 +42,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+} from "@/components/ui/alert-dialog";
 import {
   Empty,
   EmptyContent,
@@ -55,147 +50,147 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty"
+} from "@/components/ui/empty";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
-} from "@/components/ui/input-group"
+} from "@/components/ui/input-group";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip"
+} from "@/components/ui/tooltip";
 
-import { StateBadge } from "@/components/state-badge"
-import { api } from "@/lib/api"
-import { useTarefasLocais } from "@/lib/store"
-import type { EstadoTarefa, Tarefa } from "@/lib/types"
-import { formatarDataCurta, nomeDominio, truncar } from "@/lib/format"
+import { StateBadge } from "@/components/state-badge";
+import { api } from "@/lib/api";
+import { useTarefasLocais } from "@/lib/store";
+import type { EstadoTarefa, Tarefa } from "@/lib/types";
+import { formatarDataCurta, nomeDominio, truncar } from "@/lib/format";
 
-type CampoOrdenacao = "criado_em" | "estado" | "progresso" | "url"
-type DirecaoOrdenacao = "asc" | "desc"
+type CampoOrdenacao = "criado_em" | "estado" | "progresso" | "url";
+type DirecaoOrdenacao = "asc" | "desc";
 
 interface Props {
-  limite?: number
-  compacto?: boolean
+  limite?: number;
+  compacto?: boolean;
 }
 
 export function TaskList({ limite, compacto }: Props) {
-  const { lastUpdate, remover } = useTarefasLocais()
-  const [tarefas, setTarefas] = useState<Tarefa[]>([])
-  const [aCarregar, setACarregar] = useState(true)
-  const [aActualizar, setAActualizar] = useState(false)
+  const { lastUpdate, remover } = useTarefasLocais();
+  const [tarefas, setTarefas] = useState<Tarefa[]>([]);
+  const [aCarregar, setACarregar] = useState(true);
+  const [aActualizar, setAActualizar] = useState(false);
 
-  const [pesquisa, setPesquisa] = useState("")
+  const [pesquisa, setPesquisa] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<EstadoTarefa | "todos">(
     "todos",
-  )
+  );
   const [campoOrdenacao, setCampoOrdenacao] =
-    useState<CampoOrdenacao>("criado_em")
+    useState<CampoOrdenacao>("criado_em");
   const [direcaoOrdenacao, setDirecaoOrdenacao] =
-    useState<DirecaoOrdenacao>("desc")
+    useState<DirecaoOrdenacao>("desc");
 
-  const carregar = useCallback(
-    async (silencioso = false) => {
-      if (!silencioso) setACarregar(true)
-      else setAActualizar(true)
-      try {
-        const r = await api.listarTarefas()
-        setTarefas(r)
-      } catch (e) {
-        console.error("Erro ao carregar tarefas:", e)
-        toast.error("Não foi possível carregar as tarefas do backend")
-      } finally {
-        setACarregar(false)
-        setAActualizar(false)
-      }
-    },
-    [],
-  )
+  const carregar = useCallback(async (silencioso = false) => {
+    if (!silencioso) setACarregar(true);
+    else setAActualizar(true);
+    try {
+      const r = await api.listarTarefas();
+      setTarefas(r);
+    } catch (e) {
+      console.error("Erro ao carregar tarefas:", e);
+      toast.error("Não foi possível carregar as tarefas do backend");
+    } finally {
+      setACarregar(false);
+      setAActualizar(false);
+    }
+  }, []);
 
   useEffect(() => {
-    carregar()
-  }, [carregar, lastUpdate])
-
+    carregar();
+  }, [carregar, lastUpdate]);
 
   async function apagar(id: string) {
     try {
-      await api.apagarTarefa(id)
-      toast.success("Tarefa apagada")
-      remover() // Trigger update
+      await api.apagarTarefa(id);
+      toast.success("Tarefa apagada");
+      remover(); // Trigger update
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Erro"
-      toast.error("Não foi possível apagar no backend", { description: msg })
+      const msg = e instanceof Error ? e.message : "Erro";
+      toast.error("Não foi possível apagar no backend", { description: msg });
     }
   }
 
   const linhas = useMemo(() => {
-    let lista = [...tarefas]
+    let lista = [...tarefas];
 
     if (pesquisa.trim()) {
-      const q = pesquisa.trim().toLowerCase()
+      const q = pesquisa.trim().toLowerCase();
       lista = lista.filter((tarefa) => {
-        const urls = [
-          tarefa.url_alvo,
-          ...(tarefa.urls_alvo ?? []),
-        ]
+        const urls = [tarefa.url_alvo, ...(tarefa.urls_alvo ?? [])]
           .filter(Boolean)
           .join(" ")
-          .toLowerCase()
-        return urls.includes(q) || tarefa.id.toLowerCase().includes(q)
-      })
+          .toLowerCase();
+        return urls.includes(q) || tarefa.id.toLowerCase().includes(q);
+      });
     }
 
     if (filtroEstado !== "todos") {
-      lista = lista.filter((tarefa) => tarefa.estado === filtroEstado)
+      lista = lista.filter((tarefa) => tarefa.estado === filtroEstado);
     }
 
     lista.sort((a, b) => {
-      let av: string | number = 0
-      let bv: string | number = 0
+      let av: string | number = 0;
+      let bv: string | number = 0;
       switch (campoOrdenacao) {
         case "criado_em":
-          av = a.criado_em
-          bv = b.criado_em
-          break
+          av = a.criado_em;
+          bv = b.criado_em;
+          break;
         case "estado":
-          av = a.estado
-          bv = b.estado
-          break
+          av = a.estado;
+          bv = b.estado;
+          break;
         case "progresso": {
-          const ap = a.progresso
-          const bp = b.progresso
+          const ap = a.progresso;
+          const bp = b.progresso;
           av =
             ap && ap.paginas_descobertas > 0
               ? ap.paginas_processadas / ap.paginas_descobertas
-              : 0
+              : 0;
           bv =
             bp && bp.paginas_descobertas > 0
               ? bp.paginas_processadas / bp.paginas_descobertas
-              : 0
-          break
+              : 0;
+          break;
         }
         case "url":
-          av = a.url_alvo
-          bv = b.url_alvo
-          break
+          av = a.url_alvo;
+          bv = b.url_alvo;
+          break;
       }
-      if (av < bv) return direcaoOrdenacao === "asc" ? -1 : 1
-      if (av > bv) return direcaoOrdenacao === "asc" ? 1 : -1
-      return 0
-    })
+      if (av < bv) return direcaoOrdenacao === "asc" ? -1 : 1;
+      if (av > bv) return direcaoOrdenacao === "asc" ? 1 : -1;
+      return 0;
+    });
 
-    return limite ? lista.slice(0, limite) : lista
-  }, [tarefas, pesquisa, filtroEstado, campoOrdenacao, direcaoOrdenacao, limite])
+    return limite ? lista.slice(0, limite) : lista;
+  }, [
+    tarefas,
+    pesquisa,
+    filtroEstado,
+    campoOrdenacao,
+    direcaoOrdenacao,
+    limite,
+  ]);
 
   function alternarOrdenacao(campo: CampoOrdenacao) {
     if (campoOrdenacao === campo) {
-      setDirecaoOrdenacao((d) => (d === "asc" ? "desc" : "asc"))
+      setDirecaoOrdenacao((d) => (d === "asc" ? "desc" : "asc"));
     } else {
-      setCampoOrdenacao(campo)
-      setDirecaoOrdenacao("desc")
+      setCampoOrdenacao(campo);
+      setDirecaoOrdenacao("desc");
     }
   }
 
@@ -204,14 +199,16 @@ export function TaskList({ limite, compacto }: Props) {
       <Card>
         <CardContent className="p-8 text-center">
           <RefreshCw className="mx-auto size-8 animate-spin text-muted-foreground" />
-          <p className="mt-2 text-sm text-muted-foreground">A carregar tarefas...</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            A carregar tarefas...
+          </p>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   if (tarefas.length === 0 && !pesquisa && filtroEstado === "todos") {
-    return <SemTarefas />
+    return <SemTarefas />;
   }
 
   return (
@@ -317,21 +314,25 @@ export function TaskList({ limite, compacto }: Props) {
             <TableBody>
               {linhas.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                  <TableCell
+                    colSpan={7}
+                    className="h-24 text-center text-muted-foreground"
+                  >
                     Nenhuma tarefa corresponde aos filtros.
                   </TableCell>
                 </TableRow>
               )}
               {linhas.map((tarefa) => {
-                const progresso = tarefa.progresso
-                const total = progresso?.paginas_descobertas ?? 0
-                const feitas = progresso?.paginas_processadas ?? 0
-                const percent = total > 0 ? Math.round((feitas / total) * 100) : 0
+                const progresso = tarefa.progresso;
+                const total = progresso?.paginas_descobertas ?? 0;
+                const feitas = progresso?.paginas_processadas ?? 0;
+                const percent =
+                  total > 0 ? Math.round((feitas / total) * 100) : 0;
                 const urlExibir =
                   tarefa.urls_alvo && tarefa.urls_alvo.length > 1
                     ? `${tarefa.urls_alvo.length} URLs em lote`
-                    : tarefa.url_alvo
-                const running = tarefa.esta_a_correr
+                    : tarefa.url_alvo;
+                const running = tarefa.esta_a_correr;
 
                 return (
                   <TableRow key={tarefa.id} className="group">
@@ -392,10 +393,13 @@ export function TaskList({ limite, compacto }: Props) {
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Apagar tarefa?</AlertDialogTitle>
+                              <AlertDialogTitle>
+                                Apagar tarefa?
+                              </AlertDialogTitle>
                               <AlertDialogDescription>
-                                Esta operação remove a tarefa do backend permanentemente. 
-                                Os resultados serão descartados.
+                                Esta operação remove a tarefa do backend
+                                permanentemente. Os resultados serão
+                                descartados.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -412,14 +416,14 @@ export function TaskList({ limite, compacto }: Props) {
                       </div>
                     </TableCell>
                   </TableRow>
-                )
+                );
               })}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
     </TooltipProvider>
-  )
+  );
 }
 
 function SemTarefas() {
@@ -440,5 +444,5 @@ function SemTarefas() {
         </Button>
       </EmptyContent>
     </Empty>
-  )
+  );
 }
