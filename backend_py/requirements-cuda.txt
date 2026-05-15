@@ -1,0 +1,29 @@
+# PyTorch com suporte CUDA 12.1
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch
+
+# API e servidor
+fastapi
+uvicorn[standard]
+python-dotenv
+python-multipart
+sse-starlette
+
+# IA / Visão computacional
+transformers
+timm
+Pillow
+numpy
+
+# Rastreador web
+crawlee[httpx]>=1.6.0,<2.0
+httpx[http2]>=0.27.0
+selectolax>=0.3.21
+hishel>=0.1.0
+diskcache>=5.6.3
+niquests>=3.7.0
+playwright>=1.45.0
+patchright>=1.52.0
+
+# Performance
+uvloop ; sys_platform != "win32"

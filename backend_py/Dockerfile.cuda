@@ -1,0 +1,54 @@
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 AS builder
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 python3.11-dev python3.11-venv python3-pip \
+    build-essential gcc \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3
+
+COPY requirements-cuda.txt .
+RUN pip3 install --no-cache-dir --upgrade pip && \
+    pip3 install --no-cache-dir -r requirements-cuda.txt
+
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
+ENV BACKEND_PORT=4000
+ENV DATA_PATH=/app/data
+ENV UVICORN_LOOP=uvloop
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 python3-pip \
+    libgl1 libglib2.0-0 curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.11 /usr/bin/python3
+
+COPY --from=builder /usr/local/lib/python3.11/dist-packages /usr/local/lib/python3.11/dist-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+RUN python3 -m pip install --no-cache-dir patchright && \
+    python3 -m patchright install --with-deps chromium
+
+COPY . .
+
+RUN mkdir -p data && chmod 777 data
+
+RUN useradd -m appuser && chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 4000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:4000/saude || exit 1
+
+CMD ["sh", "-c", "python3 -m uvicorn main:app --host 0.0.0.0 --port 4000 --workers 1 --log-level warning --access-log --loop ${UVICORN_LOOP:-auto} --http httptools"]

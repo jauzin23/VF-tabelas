@@ -16,14 +16,22 @@ __pycache__/
 .crawlee/
 storage/
 
-# Dados gerados
-data/tarefas/*
-!data/tarefas/.gitkeep
-data/models/*
-!data/models/.gitkeep
+# Dados gerados (ignora em qualquer subpasta, ex: backend_py/data)
+**/data/tarefas/*
+!**/data/tarefas/.gitkeep
+**/data/models/*
+!**/data/models/.gitkeep
+**/data/jobs/*
+!**/data/jobs/.gitkeep
+
+# Ignorar pastas de dados persistentes no root ou backend
+data/
+**/data/
 
 # Logs
 *.log
 
-# Treino IA
+# Imagens de teste e treino
+imagens-teste/*
 /treino_ia/negativos/*
+**/scratch/
