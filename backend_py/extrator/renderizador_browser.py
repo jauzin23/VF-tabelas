@@ -7,12 +7,11 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any
 
-from utilitarios.registo import registo
-from utilitarios.ambiente import resolver_caminho_dados
+from config import registo, resolver_caminho_dados
 import hashlib
 
-from .localizador_imagens import JS_EXTRAIR
-from .paginacao import JS_DETETAR_PAGINACAO
+from .imagens import JS_EXTRAIR
+from .paginas import JS_DETETAR_PAGINACAO
 
 
 try:
@@ -343,7 +342,7 @@ async def renderizar_e_extrair(
 
         async def _aguardar_componentes():
             try:
-                # Modo rápido (paginação): sleep mínimo — o site já está "quente" no contexto
+                # Modo rápido (paginação): sleep mínimo - o site já está "quente" no contexto
                 espera_inicial = 0.6 if modo_rapido else 2.0
                 espera_apos_selector = 0.5 if modo_rapido else 1.5
                 await asyncio.sleep(espera_inicial)

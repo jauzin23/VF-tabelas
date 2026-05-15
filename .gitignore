@@ -1,4 +1,4 @@
-# Ambiente — nunca versionar o .env real
+# Ambiente - nunca versionar o .env real
 .env
 .env.local
 !.env.example

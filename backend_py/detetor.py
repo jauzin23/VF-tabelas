@@ -13,8 +13,7 @@ try:
 except ImportError:
     import requests as _http
 
-from utilitarios.registo import registo
-from utilitarios.ambiente import garantir_ambiente_carregado
+from config import registo, garantir_ambiente_carregado
 
 garantir_ambiente_carregado()
 
@@ -322,7 +321,7 @@ def detetar_tabelas_em_imagem_pil(imagem: Image.Image) -> tuple:
 
                 # ── Rejeitar padrões típicos de falsos positivos ─────────────────────
                 # A) Layout esparso: poucas linhas + muitas colunas + S1 fraco
-                #    → flyers de calendário (ex: grelha de datas), legendas numeradas
+                #    → flyers de calendário (ex: grelha de das), legendas numeradas
                 if n_linhas <= 5 and n_colunas >= 4 and n_cabecalhos <= 1 and pontuacao < 0.80:
                     registo.info(
                         f"  [SPARSE-REJECT] #{idx+1} {n_linhas}Lx{n_colunas}C "

@@ -10,20 +10,19 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from utilitarios.registo import registo
-from utilitarios.ambiente import garantir_ambiente_carregado, resolver_caminho_dados
+from config import registo, garantir_ambiente_carregado, resolver_caminho_dados
 
 from .renderizador_browser import GestorBrowser, renderizar_e_extrair
-from .cliente_http import construir_cliente
-from .localizador_imagens import (
+from .suporte import construir_cliente
+from .imagens import (
     extrair_estatico, extrair_links, extrair_rel_next,
+    percorrer_paginacao, extrair_dados_next, percorrer_imagens,
 )
-from .dados_next import percorrer_paginacao, extrair_dados_next, percorrer_imagens
-from .paginacao import (
+from .paginas import (
     construir_urls_fanout, detetar_paginacao, probar_paginas,
 )
-from .tipos import ImagemEncontrada, Paginacao
-from .utilitarios_url import (
+from .tipos import (
+    ImagemEncontrada, Paginacao,
     construir_url_paginada, deve_ignorar_url, env_int, normalizar_host, obter_hosts,
     normalizar_url, normalizar_url_pagina, parametro_pagina_de_url,
     parece_imagem, normalizar_imagem_url,
@@ -864,7 +863,7 @@ async def rastrear_site(
     try:
         todas_sementes = []
         if e_multi:
-            # Entry-points em paralelo — o semáforo global em GestorBrowser.pagina()
+            # Entry-points em paralelo - o semáforo global em GestorBrowser.pagina()
             # garante que no máximo concorrencia_browser tabs Chromium ficam activos
             # em simultâneo, prevenindo saturação sem sacrificar paralelismo.
             tarefas_iniciais = [

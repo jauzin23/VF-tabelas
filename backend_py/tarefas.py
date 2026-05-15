@@ -1,15 +1,31 @@
-import uuid
-import os
-import json
+"""
+tarefas.py — Gestão de estado, persistência e eventos (SSE) de tarefas.
+
+Antes: servicos/gestor_tarefas.py + servicos/eventos_tarefa.py
+"""
 import asyncio
+import json
+import os
+import shutil
+import uuid
 from dataclasses import asdict
 from datetime import datetime
-from utilitarios.registo import registo
-from utilitarios.ambiente import garantir_ambiente_carregado, resolver_caminho_dados
-from .extrator import rastrear_site
-from .detetor_tabelas import detetar_tabelas_para_tarefa
-from .eventos_tarefa import publicar_atualizacao_tarefa
 
+from config import registo, garantir_ambiente_carregado, resolver_caminho_dados
+from extrator import rastrear_site
+from detetor import detetar_tabelas_para_tarefa
+
+garantir_ambiente_carregado()
+CAMINHO_DADOS = resolver_caminho_dados(os.getenv("DATA_PATH", "./data"))
+
+# Cache em memória para tarefas ativas
+tarefas = {}
+
+# Canais para SSE (Server-Sent Events)
+canais_eventos = {}
+
+
+# ── Utilitários Internos ──────────────────────────────────────────────────────
 
 def _ambiente_int(chave, padrao):
     v = os.getenv(chave)
@@ -21,22 +37,9 @@ def _ambiente_int(chave, padrao):
         return padrao
 
 
-def _ambiente_booleano(chave, padrao=False):
-    v = os.getenv(chave)
-    if v is None:
-        return padrao
-    return v.strip().lower() in ("1", "true", "yes", "sim", "on")
-
-
 def _concorrencia_automatica():
     cpu = os.cpu_count() or 4
     return max(3, min(8, cpu // 2))
-
-
-garantir_ambiente_carregado()
-CAMINHO_DADOS = resolver_caminho_dados(os.getenv("DATA_PATH", "./data"))
-
-tarefas = {}
 
 
 def obter_caminho_json_tarefa(id_tarefa):
@@ -47,7 +50,10 @@ def obter_caminho_running_tarefa(id_tarefa):
     return os.path.join(CAMINHO_DADOS, "tarefas", id_tarefa, "running.txt")
 
 
+# ── Formatação e Respostas ───────────────────────────────────────────────────
+
 def formatar_tarefa(tarefa):
+    """Prepara o dicionário da tarefa para consumo externo."""
     saida = {
         "id":           tarefa["id"],
         "url_alvo":     tarefa["url_alvo"],
@@ -70,54 +76,85 @@ def formatar_tarefa(tarefa):
 
 
 def preparar_resposta_bloqueante(tarefa):
-    """
-    Prepara a tarefa para uma resposta HTTP bloqueante (sem SSE).
-    Remove campos internos e simplifica o formato.
-    """
+    """Simplifica a tarefa para respostas HTTP tradicionais (sem SSE)."""
     resultado = formatar_tarefa(tarefa)
-    
-    # Limpeza de campos internos/debug para modo bloqueante
     resultado.pop("opcoes", None)
-    resultado.pop("paginacao_inicial", None)
     resultado.pop("esta_a_correr", None)
     resultado.pop("estatisticas_rastreio", None)
     resultado.pop("url_atual", None)
-    resultado.pop("urls_alvo", None) # Também limpamos urls_alvo redundante
+    resultado.pop("urls_alvo", None)
     
-    # Renomear progresso para resumo (já que a tarefa terminou ou falhou)
     if "progresso" in resultado:
         resultado["resumo"] = resultado.pop("progresso")
-        
     return resultado
+
+
+# ── Persistência e Eventos ───────────────────────────────────────────────────
+
+async def publicar_atualizacao_tarefa(tarefa_dict):
+    id_tarefa = tarefa_dict["id"]
+    if id_tarefa in canais_eventos:
+        mensagem = json.dumps(tarefa_dict)
+        for fila in canais_eventos[id_tarefa]:
+            await fila.put(mensagem)
 
 
 async def publicar_e_persistir(tarefa):
     formatada = formatar_tarefa(tarefa)
     await publicar_atualizacao_tarefa(formatada)
 
-    dir_tarefa = os.path.dirname(obter_caminho_json_tarefa(tarefa["id"]))
-    os.makedirs(dir_tarefa, exist_ok=True)
-    with open(obter_caminho_json_tarefa(tarefa["id"]), "w", encoding="utf8") as f:
+    caminho = obter_caminho_json_tarefa(tarefa["id"])
+    os.makedirs(os.path.dirname(caminho), exist_ok=True)
+    with open(caminho, "w", encoding="utf8") as f:
         json.dump(formatada, f, indent=2, ensure_ascii=False)
 
 
+async def obter_eventos_tarefa(id_tarefa, pedido, estado_inicial=None):
+    """Gerador para streaming SSE de uma tarefa."""
+    fila = asyncio.Queue()
+    if id_tarefa not in canais_eventos:
+        canais_eventos[id_tarefa] = []
+    canais_eventos[id_tarefa].append(fila)
+
+    try:
+        if estado_inicial:
+            mensagem_inicial = json.dumps(formatar_tarefa(estado_inicial))
+            yield f"data: {mensagem_inicial}\n\n"
+
+        while True:
+            if await pedido.is_disconnected():
+                break
+            try:
+                dados = await asyncio.wait_for(fila.get(), timeout=1.0)
+                yield f"data: {dados}\n\n"
+            except asyncio.TimeoutError:
+                yield ": keep-alive\n\n"
+    finally:
+        if id_tarefa in canais_eventos:
+            canais_eventos[id_tarefa].remove(fila)
+            if not canais_eventos[id_tarefa]:
+                del canais_eventos[id_tarefa]
+
+
+# ── Lógica de Execução ───────────────────────────────────────────────────────
+
 async def executar_tarefa(id_tarefa):
-    tarefa = tarefas[id_tarefa]
+    tarefa = tarefas.get(id_tarefa)
+    if not tarefa: return
+    
     tarefa["estado"]      = "em_execucao"
     tarefa["iniciado_em"] = datetime.utcnow().isoformat() + "Z"
 
-    # Criar ficheiro de sinalização que está a correr
+    # Ficheiro de sinalização
     caminho_running = obter_caminho_running_tarefa(id_tarefa)
     os.makedirs(os.path.dirname(caminho_running), exist_ok=True)
-    with open(caminho_running, "w") as f:
-        f.write("")
+    with open(caminho_running, "w") as f: f.write("")
 
     registo.info(f"Tarefa {id_tarefa} iniciada")
     await publicar_e_persistir(tarefa)
 
     try:
         entrada_alvo = tarefa.get("urls_alvo") or tarefa["url_alvo"]
-        tarefa["url_atual"] = None
         ultima_atualizacao_ui = 0
 
         def atualizar_progresso_controlado(**kwargs):
@@ -128,14 +165,14 @@ async def executar_tarefa(id_tarefa):
             tarefa["progresso"].update(kwargs)
             if "imagens_bruto" in tarefa["progresso"] and "imagens_bulk" not in tarefa["progresso"]:
                 tarefa["progresso"]["imagens_bulk"] = tarefa["progresso"]["imagens_bruto"]
+            
             agora = asyncio.get_event_loop().time()
             if agora - ultima_atualizacao_ui > 0.4:
                 asyncio.create_task(publicar_e_persistir(tarefa))
                 ultima_atualizacao_ui = agora
 
-        is_multi = len(tarefa.get("urls_alvo", [])) > 0
-        
-        opcoes_execucao = {
+        is_multi = bool(tarefa.get("urls_alvo"))
+        opcoes_exec = {
             "seguir_paginacao": tarefa["opcoes"].get("seguir_paginacao", True),
             "seguir_detalhe":   tarefa["opcoes"].get("seguir_detalhe", True),
             "max_paginas":      0 if is_multi else tarefa["opcoes"].get("max_paginas", 0),
@@ -144,34 +181,25 @@ async def executar_tarefa(id_tarefa):
             "id_tarefa":        id_tarefa,
         }
 
-        tempo_limite_segundos = int(tarefa["opcoes"].get("maxJobSeconds")
-                                   or _ambiente_int("JOB_TIMEOUT_S", 600))
-
+        # 1. Rastreio / Extração
         rastreados, estatisticas = await rastrear_site(
-            entrada_alvo, opcoes_execucao, {
+            entrada_alvo, opcoes_exec, {
                 "ao_descobrir_paginas": lambda c: atualizar_progresso_controlado(paginas_descobertas=c),
                 "ao_visitar_url":       lambda u: atualizar_progresso_controlado(url_atual=u),
                 "ao_processar_pagina":  lambda c: atualizar_progresso_controlado(paginas_processadas=c),
                 "ao_encontrar_imagens": lambda c, b: atualizar_progresso_controlado(
-                    imagens_encontradas=b,
-                    imagens_bulk=b,
-                    imagens_bruto=b,
-                    imagens_unicas=c,
+                    imagens_encontradas=b, imagens_bulk=b, imagens_bruto=b, imagens_unicas=c
                 ),
-                "ao_detectar_paginacao": lambda total: None,
             }
         )
 
-        await publicar_e_persistir(tarefa)
-
         tarefa["estatisticas_rastreio"] = estatisticas
-        rastreados_dicts = [asdict(r) if hasattr(r, "__dataclass_fields__") else r for r in rastreados]
-        tarefa["resultados"] = rastreados_dicts
-        tarefa["progresso"]["imagens_unicas"] = len(rastreados_dicts)
+        tarefa["resultados"] = [asdict(r) if hasattr(r, "__dataclass_fields__") else r for r in rastreados]
+        tarefa["progresso"]["imagens_unicas"] = len(tarefa["resultados"])
         await publicar_e_persistir(tarefa)
 
-        registo.info(f"Tarefa {id_tarefa}: analise de {len(rastreados_dicts)} imagens unicas")
-
+        # 2. Análise IA
+        registo.info(f"Tarefa {id_tarefa}: analise de {len(tarefa['resultados'])} imagens")
         tarefa["resultados"] = await detetar_tabelas_para_tarefa(
             tarefa["resultados"],
             tarefa["id"],
@@ -188,14 +216,11 @@ async def executar_tarefa(id_tarefa):
         tarefa["erro"]   = str(e)
 
     tarefa["terminado_em"] = datetime.utcnow().isoformat() + "Z"
-    
-    # Remover ficheiro de sinalização
-    caminho_running = obter_caminho_running_tarefa(id_tarefa)
-    if os.path.exists(caminho_running):
-        os.remove(caminho_running)
-
+    if os.path.exists(caminho_running): os.remove(caminho_running)
     await publicar_e_persistir(tarefa)
 
+
+# ── Gestão de Ciclo de Vida ───────────────────────────────────────────────────
 
 def inicializar_tarefa(carga_util):
     id_tarefa = str(uuid.uuid4())
@@ -210,16 +235,16 @@ def inicializar_tarefa(carga_util):
         "estado":     "pendente",
         "criado_em":  datetime.utcnow().isoformat() + "Z",
         "opcoes": {
-            "max_paginas":              opcoes.get("max_paginas", opcoes.get("maxPages", _ambiente_int("MAX_PAGES", 0))),
-            "max_profundidade":         opcoes.get("max_profundidade", opcoes.get("maxDepth", _ambiente_int("MAX_DEPTH", 1))),
-            "tempo_limite_pagina_ms":  opcoes.get("tempo_limite_pagina_ms", opcoes.get("pageTimeoutMs", _ambiente_int("PAGE_TIMEOUT_MS", 15000))),
-            "max_imagens_total":        opcoes.get("max_imagens_total", opcoes.get("maxImagesTotal")),
-            "max_imagens_por_pagina":   opcoes.get("max_imagens_por_pagina", opcoes.get("maxImagesPerPage")),
-            "concorrencia":             opcoes.get("concorrencia", opcoes.get("concurrency", _ambiente_int("CRAWLER_CONCURRENCY", _concorrencia_automatica()))),
-            "concorrencia_analise":     opcoes.get("concorrencia_analise", opcoes.get("analysisConcurrency", _ambiente_int("ANALYSIS_CONCURRENCY", 2))),
-            "seguir_paginacao":         bool(opcoes.get("seguir_paginacao", opcoes.get("seguirPaginacao", True))),
-            "seguir_detalhe":           bool(opcoes.get("seguir_detalhe", opcoes.get("seguirDetalhe", True))),
-            "tempo_limite_job_segundos": opcoes.get("tempo_limite_job_segundos", opcoes.get("maxJobSeconds", _ambiente_int("JOB_TIMEOUT_S", 600))),
+            "max_paginas":              opcoes.get("max_paginas", _ambiente_int("MAX_PAGES", 0)),
+            "max_profundidade":         opcoes.get("max_profundidade", _ambiente_int("MAX_DEPTH", 1)),
+            "tempo_limite_pagina_ms":  opcoes.get("tempo_limite_pagina_ms", _ambiente_int("PAGE_TIMEOUT_MS", 15000)),
+            "max_imagens_total":        opcoes.get("max_imagens_total"),
+            "max_imagens_por_pagina":   opcoes.get("max_imagens_por_pagina"),
+            "concorrencia":             opcoes.get("concorrencia", _ambiente_int("CRAWLER_CONCURRENCY", _concorrencia_automatica())),
+            "concorrencia_analise":     opcoes.get("concorrencia_analise", _ambiente_int("ANALYSIS_CONCURRENCY", 2)),
+            "seguir_paginacao":         bool(opcoes.get("seguir_paginacao", True)),
+            "seguir_detalhe":           bool(opcoes.get("seguir_detalhe", True)),
+            "maxJobSeconds":            opcoes.get("maxJobSeconds", _ambiente_int("JOB_TIMEOUT_S", 600)),
         },
         "progresso": {
             "paginas_descobertas": 0, "paginas_processadas": 0,
@@ -228,7 +253,6 @@ def inicializar_tarefa(carga_util):
         },
         "resultados": []
     }
-
     tarefas[id_tarefa] = tarefa
     return tarefa
 
@@ -241,7 +265,6 @@ def criar_tarefa(carga_util):
 
 
 def obter_tarefa(id_tarefa):
-    # Tenta em memória primeiro
     if id_tarefa in tarefas:
         return formatar_tarefa(tarefas[id_tarefa])
     
@@ -252,27 +275,22 @@ def obter_tarefa(id_tarefa):
                 dados = json.load(f)
                 tarefas[id_tarefa] = dados
                 return formatar_tarefa(dados)
-        except Exception as e:
-            registo.error(f"Erro ao carregar tarefa {id_tarefa} do disco: {e}")
+        except Exception:
+            pass
     return None
 
 
 def listar_tarefas():
-    pasta_tarefas = os.path.join(CAMINHO_DADOS, "tarefas")
-    if not os.path.exists(pasta_tarefas):
-        return []
+    pasta = os.path.join(CAMINHO_DADOS, "tarefas")
+    if not os.path.exists(pasta): return []
     
     resultados = []
-    ids = [d for d in os.listdir(pasta_tarefas) if os.path.isdir(os.path.join(pasta_tarefas, d))]
-    
-    for tid in ids:
+    for tid in os.listdir(pasta):
         caminho_json = obter_caminho_json_tarefa(tid)
         if os.path.exists(caminho_json):
             try:
-                # Lemos apenas o básico para não carregar ficheiros gigantes de resultados na listagem
                 with open(caminho_json, "r", encoding="utf8") as f:
                     dados = json.load(f)
-                    # Resumo para a listagem
                     resultados.append({
                         "id":           dados["id"],
                         "url_alvo":     dados["url_alvo"],
@@ -281,30 +299,24 @@ def listar_tarefas():
                         "opcoes":       dados["opcoes"],
                         "progresso":    dados["progresso"],
                         "esta_a_correr": os.path.exists(obter_caminho_running_tarefa(tid)),
-                        # Não incluímos resultados na listagem por performance
                     })
-            except:
-                continue
+            except: continue
     
-    # Ordenar por data de criação desc
     resultados.sort(key=lambda x: x["criado_em"], reverse=True)
     return resultados
 
 
 def eliminar_tarefa(id_tarefa):
-    # Remover da memória
-    if id_tarefa in tarefas:
-        del tarefas[id_tarefa]
-    
-    # Remover do disco
+    if id_tarefa in tarefas: del tarefas[id_tarefa]
     diretorio = os.path.join(CAMINHO_DADOS, "tarefas", id_tarefa)
     if os.path.exists(diretorio):
-        import shutil
         try:
             shutil.rmtree(diretorio)
             return True
-        except Exception as e:
-            registo.error(f"Erro ao apagar diretório da tarefa {id_tarefa}: {e}")
-            return False
-    
+        except Exception: return False
     return False
+
+
+async def manutencao_canais_loop():
+    while True:
+        await asyncio.sleep(60)
