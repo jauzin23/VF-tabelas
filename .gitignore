@@ -1,22 +1,29 @@
-node_modules/
-dist/
-.next/
+# Ambiente — nunca versionar o .env real
 .env
 .env.local
+!.env.example
+
+# Frontend
+node_modules/
+.next/
+dist/
 coverage/
-*.log
-data/jobs/*
-!data/jobs/.gitkeep
+
+# Backend Python
+__pycache__/
+*.pyc
+.venv*/
+.crawlee/
+storage/
+
+# Dados gerados
 data/tarefas/*
 !data/tarefas/.gitkeep
 data/models/*
 !data/models/.gitkeep
-imagens-teste/*
 
-.venv*/
-__pycache__/
-*.pyc
-.crawlee/
-storage/
+# Logs
+*.log
 
+# Treino IA
 /treino_ia/negativos/*

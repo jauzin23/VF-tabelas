@@ -374,7 +374,7 @@ function ConfiguracaoCard({
         </Card>
       )}
 
-      <Card className={urls.length === 1 ? "md:col-span-2" : ""}>
+      <Card className={`${urls.length === 1 ? "md:col-span-2" : ""} h-fit`}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <ImageIcon className="size-4" />
@@ -386,7 +386,7 @@ function ConfiguracaoCard({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-[280px] pr-4">
+          <ScrollArea className="max-h-[300px] pr-4">
             <ul className="grid gap-1 text-sm">
               {urls.map((u, i) => (
                 <li

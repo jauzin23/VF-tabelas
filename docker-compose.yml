@@ -1,35 +1,40 @@
 services:
   backend:
-    build: ./backend_py
+    build:
+      context: ./backend_py
     restart: unless-stopped
     ports:
-      - "4000:4000"
+      - "${BACKEND_PORT:-4000}:4000"
     environment:
-      - BACKEND_PORT=4000
-      - DATA_PATH=/data
-      - MAX_PAGES=50
-      - MAX_DEPTH=3
-      - PAGE_TIMEOUT_MS=30000
-      - TABLE_MIN_CONFIDENCE=0.5
+      BACKEND_PORT:             ${BACKEND_PORT:-4000}
+      DATA_PATH:                /data
+      ALLOWED_ORIGINS:          ${ALLOWED_ORIGINS:-*}
+      MAX_PAGES:                ${MAX_PAGES:-50}
+      MAX_DEPTH:                ${MAX_DEPTH:-3}
+      PAGE_TIMEOUT_MS:          ${PAGE_TIMEOUT_MS:-30000}
+      TABLE_MIN_CONFIDENCE:     ${TABLE_MIN_CONFIDENCE:-0.5}
+      MIN_IMAGE_WIDTH:          ${MIN_IMAGE_WIDTH:-120}
+      MIN_IMAGE_HEIGHT:         ${MIN_IMAGE_HEIGHT:-80}
+      MIN_IMAGE_AREA:           ${MIN_IMAGE_AREA:-9600}
+      ANALYSIS_CONCURRENCY:     ${ANALYSIS_CONCURRENCY:-2}
+      IMAGE_HTTP_RETRIES:       ${IMAGE_HTTP_RETRIES:-2}
+      STRUCTURE_MIN_ROWS:       ${STRUCTURE_MIN_ROWS:-2}
+      STRUCTURE_MIN_COLS:       ${STRUCTURE_MIN_COLS:-2}
+      CRAWLER_CONCURRENCY:      ${CRAWLER_CONCURRENCY:-0}
+      JOB_TIMEOUT_S:            ${JOB_TIMEOUT_S:-600}
     volumes:
       - app_data:/data
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     environment:
-      - NODE_ENV=production
-      - BACKEND_URL=http://backend:4000
-      - NEXT_PUBLIC_API_BASE=/api/jobs
+      NODE_ENV: production
     depends_on:
       - backend
 
