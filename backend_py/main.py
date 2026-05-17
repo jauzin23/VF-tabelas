@@ -1,6 +1,7 @@
 """
 main.py — Ponto de entrada da API FastAPI.
-Agrega todas as rotas e middleware.
+Agrega todas as rotas, middleware e gestão do ciclo de vida.
+Integra o sistema de filas para containers com pouca RAM.
 """
 import asyncio
 import os
@@ -18,9 +19,13 @@ from config import registo, garantir_ambiente_carregado
 from tarefas import (
     criar_tarefa, inicializar_tarefa, executar_tarefa, publicar_e_persistir,
     obter_tarefa, eliminar_tarefa, listar_tarefas, formatar_tarefa,
-    preparar_resposta_bloqueante, obter_eventos_tarefa, manutencao_canais_loop
+    preparar_resposta_bloqueante, obter_eventos_tarefa, manutencao_canais_loop,
+    fila_global, tarefas as tarefas_cache,
 )
-from detetor import detetar_tabelas_em_imagem
+from detetor import (
+    detetar_tabelas_em_imagem, modelos_carregados,
+    verificar_descarga_modelos,
+)
 
 garantir_ambiente_carregado()
 
@@ -43,17 +48,24 @@ async def ciclo_vida(app: FastAPI):
     loop.set_exception_handler(_manipulador_excecoes)
 
     registo.info("A iniciar serviços de background...")
+    
+    # Iniciar fila global
+    await fila_global.iniciar()
+    
+    # Iniciar tarefas de background
     tarefa_manutencao = asyncio.create_task(manutencao_canais_loop())
+    tarefa_descarga = asyncio.create_task(verificar_descarga_modelos())
+    
     yield
+    
     registo.info("A encerrar serviços de background...")
     tarefa_manutencao.cancel()
-
-
-# ── App e Middleware ──────────────────────────────────────────────────────────
+    tarefa_descarga.cancel()
+    await fila_global.parar()
 
 app = FastAPI(
     title="VF-Tabelas",
-    version="1.1.0",
+    version="1.2.0",
     lifespan=ciclo_vida
 )
 
@@ -108,14 +120,23 @@ async def api_criar_tarefa(carga: CargaCriarTarefa):
     
     carga_dict = carga.dict()
     if carga.sse:
-        tarefa = criar_tarefa(carga_dict)
+        # Modo SSE: enfileirar e retornar imediatamente
+        try:
+            tarefa, posicao = await criar_tarefa(carga_dict)
+        except asyncio.QueueFull:
+            raise HTTPException(
+                status_code=503,
+                detail="Servidor ocupado — a fila de tarefas está cheia. Tente mais tarde."
+            )
         return {
             "id":        tarefa["id"],
             "url_alvo":  tarefa["url_alvo"],
             "estado":    tarefa["estado"],
-            "criado_em": tarefa["criado_em"]
+            "criado_em": tarefa["criado_em"],
+            "posicao_fila": posicao,
         }
     else:
+        # Modo bloqueante: executar diretamente (sem fila)
         tarefa = inicializar_tarefa(carga_dict)
         await publicar_e_persistir(tarefa)
         await executar_tarefa(tarefa["id"])
@@ -187,18 +208,55 @@ async def api_paginacao_multurls(carga: CargaPaginacao):
     }
     
     if carga.sse:
-        tarefa = criar_tarefa(carga_dict)
+        try:
+            tarefa, posicao = await criar_tarefa(carga_dict)
+        except asyncio.QueueFull:
+            raise HTTPException(
+                status_code=503,
+                detail="Servidor ocupado — a fila de tarefas está cheia. Tente mais tarde."
+            )
         return {
             "id":        tarefa["id"],
             "url_alvo":  tarefa["url_alvo"],
             "estado":    tarefa["estado"],
-            "criado_em": tarefa["criado_em"]
+            "criado_em": tarefa["criado_em"],
+            "posicao_fila": posicao,
         }
     else:
         tarefa = inicializar_tarefa(carga_dict)
         await publicar_e_persistir(tarefa)
         await executar_tarefa(tarefa["id"])
         return preparar_resposta_bloqueante(tarefa)
+
+
+# ── Rotas: Sistema (Monitorização) ───────────────────────────────────────────
+
+@app.get("/api/sistema/fila")
+async def api_fila():
+    """Estado atual da fila de tarefas."""
+    return fila_global.info()
+
+@app.get("/api/sistema/memoria")
+async def api_memoria():
+    """Uso de memória do processo backend."""
+    try:
+        import psutil
+        proc = psutil.Process(os.getpid())
+        mem = proc.memory_info()
+        return {
+            "rss_mb": round(mem.rss / 1024 / 1024, 1),
+            "vms_mb": round(mem.vms / 1024 / 1024, 1),
+            "fila": fila_global.info(),
+            "modelos_carregados": modelos_carregados(),
+            "tarefas_em_memoria": len(tarefas_cache),
+        }
+    except ImportError:
+        return {
+            "erro": "psutil não instalado",
+            "fila": fila_global.info(),
+            "modelos_carregados": modelos_carregados(),
+            "tarefas_em_memoria": len(tarefas_cache),
+        }
 
 
 # ── Execução ──────────────────────────────────────────────────────────────────

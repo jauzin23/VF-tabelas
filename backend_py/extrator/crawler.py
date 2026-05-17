@@ -846,7 +846,12 @@ async def rastrear_site(
                         ignorar_nav_footer=ignorar_nav_footer,
                     ))
 
-        links_iniciais = set(extrair_links(dados_browser.get("html") or html or "", url_inicial, ignorar_nav_footer=ignorar_nav_footer))
+        if not dados_browser:
+            registo.warning(f"[Crawler] Falha ao obter dados do browser para {url_inicial}")
+            return []
+            
+        html = dados_browser.get("html") or ""
+        links_iniciais = set(extrair_links(html, url_inicial, ignorar_nav_footer=ignorar_nav_footer))
         if dados_browser and dados_browser.get("links"):
             for l_js in dados_browser["links"]:
                 links_iniciais.add(l_js)

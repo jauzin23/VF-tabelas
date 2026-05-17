@@ -1,4 +1,4 @@
-export type EstadoTarefa = "pendente" | "em_execucao" | "concluido" | "falhou";
+export type EstadoTarefa = "pendente" | "na_fila" | "em_execucao" | "concluido" | "falhou";
 
 export interface OpcoesTarefa {
   maxPages?: number;
@@ -57,5 +57,22 @@ export interface Tarefa {
   atualizado_em: string;
   esta_a_correr?: boolean;
   estatisticas_rastreio?: Record<string, unknown> | null;
+  posicao_fila?: number | null;
 }
 
+export interface InfoFila {
+  tarefa_ativa: string | null;
+  em_espera: string[];
+  tamanho_fila: number;
+  maximo: number;
+  max_concurrent: number;
+}
+
+export interface InfoMemoria {
+  rss_mb: number;
+  vms_mb: number;
+  fila: InfoFila;
+  modelos_carregados: boolean;
+  tarefas_em_memoria: number;
+  erro?: string;
+}

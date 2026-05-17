@@ -243,6 +243,7 @@ export function TaskList({ limite, compacto }: Props) {
                 <SelectContent>
                   <SelectItem value="todos">Todos os estados</SelectItem>
                   <SelectItem value="pendente">Pendente</SelectItem>
+                  <SelectItem value="na_fila">Na fila</SelectItem>
                   <SelectItem value="em_execucao">A executar</SelectItem>
                   <SelectItem value="concluido">Concluída</SelectItem>
                   <SelectItem value="falhou">Falhou</SelectItem>
@@ -352,15 +353,26 @@ export function TaskList({ limite, compacto }: Props) {
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <StateBadge estado={tarefa.estado} />
+                      <StateBadge estado={tarefa.estado} posicaoFila={tarefa.posicao_fila} />
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <Progress value={percent} className="h-1.5" />
-                        <span className="text-xs text-muted-foreground">
-                          {feitas}/{total || "-"} páginas
-                        </span>
-                      </div>
+                      {tarefa.estado === "na_fila" ? (
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                            {tarefa.posicao_fila != null
+                              ? `Posição #${tarefa.posicao_fila} na fila`
+                              : "Na fila"}
+                          </span>
+                          <span className="text-xs text-muted-foreground">A aguardar execução</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          <Progress value={percent} className="h-1.5" />
+                          <span className="text-xs text-muted-foreground">
+                            {feitas}/{total || "-"} páginas
+                          </span>
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="hidden md:table-cell tabular-nums">
                       {tarefa.progresso.imagens_encontradas ?? "-"}

@@ -7,7 +7,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any
 
-from config import registo, resolver_caminho_dados
+from config import registo, resolver_caminho_dados, env_bool, env_int
 import hashlib
 
 from .imagens import JS_EXTRAIR
@@ -160,8 +160,26 @@ class GestorBrowser:
             argumentos = [
                 "--disable-gpu", "--disable-dev-shm-usage", "--no-sandbox",
                 "--disable-blink-features=AutomationControlled",
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-sync",
+                "--disable-translate",
+                "--no-first-run",
             ]
-            self._browser = await self._ctx_pw.chromium.launch(headless=False, args=argumentos)
+            # Modo single-process: poupa ~50MB mas crasha em Windows
+            import sys
+            if env_bool("BROWSER_SINGLE_PROCESS", False) and sys.platform != "win32":
+                argumentos.append("--single-process")
+
+            # Limitar heap JS do Chromium
+            argumentos.append("--js-flags=--max-old-space-size=128")
+            # Args extras do .env
+            extras = os.getenv("BROWSER_ARGS_EXTRA", "").strip()
+            if extras:
+                argumentos.extend(a.strip() for a in extras.split(",") if a.strip())
+            # No Docker, headless tem de ser True. Em Windows local podes mudar para False no .env se quiseres ver.
+            modo_headless = env_bool("BROWSER_HEADLESS", True)
+            self._browser = await self._ctx_pw.chromium.launch(headless=modo_headless, args=argumentos)
             self._contexto = await self._browser.new_context(
                 user_agent=_USER_AGENT, locale="pt-PT",
                 viewport={"width": 1920, "height": 1080},

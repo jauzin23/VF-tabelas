@@ -49,6 +49,8 @@ export function rotuloEstado(estado: EstadoTarefa): string {
   switch (estado) {
     case "pendente":
       return "Pendente"
+    case "na_fila":
+      return "Na fila"
     case "em_execucao":
       return "A executar"
     case "concluido":

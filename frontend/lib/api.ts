@@ -1,4 +1,4 @@
-import type { Tarefa, OpcoesTarefa } from "./types";
+import type { Tarefa, OpcoesTarefa, InfoFila, InfoMemoria } from "./types";
 
 const DEFAULT_BASE_URL = "http://localhost:4000";
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || DEFAULT_BASE_URL;
@@ -10,12 +10,6 @@ export function getApiBaseUrl(): string {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBaseUrl();
   const fullUrl = `${base}${path}`;
-  console.log(
-    "[Request] Fetching:",
-    fullUrl,
-    "with method:",
-    init?.method || "GET",
-  );
   const res = await fetch(fullUrl, {
     ...init,
     headers: {
@@ -25,7 +19,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.headers || {}),
     },
   });
-  console.log("[Request] Response status:", res.status, res.statusText);
   if (!res.ok) {
     let mensagem = `Erro ${res.status}`;
     try {
@@ -34,12 +27,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // ignore
     }
-    console.error("[Request] Error response:", mensagem);
     throw new Error(mensagem);
   }
-  const data = (await res.json()) as T;
-  console.log("[Request] Response data:", data);
-  return data;
+  return (await res.json()) as T;
+}
+
+export interface RespostaCriarTarefa {
+  id: string;
+  url_alvo: string;
+  estado: string;
+  criado_em: string;
+  posicao_fila?: number | null;
 }
 
 export const api = {
@@ -48,17 +46,13 @@ export const api = {
   listarTarefa: (id: string) => request<Tarefa>(`/api/tarefas/${id}`),
 
   criarTarefa: (url: string, opcoes?: OpcoesTarefa, sse: boolean = true) =>
-    request<Tarefa>("/api/tarefas", {
+    request<RespostaCriarTarefa>("/api/tarefas", {
       method: "POST",
       body: JSON.stringify({ url, opcoes, sse }),
     }),
 
-  criarTarefaLote: (
-    urls: string[],
-    opcoes?: OpcoesTarefa,
-    sse: boolean = true,
-  ) =>
-    request<Tarefa>("/api/paginacao-multurls", {
+  criarTarefaLote: (urls: string[], opcoes?: OpcoesTarefa, sse: boolean = true) =>
+    request<RespostaCriarTarefa>("/api/paginacao-multurls", {
       method: "POST",
       body: JSON.stringify({ urls, opcoes, sse }),
     }),
@@ -74,13 +68,9 @@ export const api = {
   detetarTabela: (ficheiro: File) => {
     const form = new FormData();
     form.append("ficheiro", ficheiro);
-    console.log("[API] Sending image detection request for:", ficheiro.name);
     return request<{ tem_tabela: boolean }>("/api/modelo/detetar-tabela", {
       method: "POST",
       body: form,
-    }).then((result) => {
-      console.log("[API] Image detection response:", result);
-      return result;
     });
   },
 
@@ -88,4 +78,7 @@ export const api = {
     const base = getApiBaseUrl();
     return new EventSource(`${base}/api/tarefas/${id}/eventos`);
   },
+
+  infoFila: () => request<InfoFila>("/api/sistema/fila"),
+  infoMemoria: () => request<InfoMemoria>("/api/sistema/memoria"),
 };

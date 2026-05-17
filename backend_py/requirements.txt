@@ -3,17 +3,17 @@ uvicorn[standard]
 python-dotenv
 python-multipart
 sse-starlette
-transformers
 timm
-torch
 Pillow
-numpy
+numpy<2.0.0
 crawlee[httpx]>=1.6.0,<2.0
-httpx[http2]>=0.27.0
-selectolax>=0.3.21
-hishel>=0.1.0
-diskcache>=5.6.3
-niquests>=3.7.0
 playwright>=1.45.0
 patchright>=1.52.0
 uvloop ; sys_platform != "win32"
+selectolax
+psutil>=5.9.0
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.4.1+cpu
+torchvision==0.19.1+cpu
+transformers==4.45.2

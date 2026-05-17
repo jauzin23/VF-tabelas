@@ -1,5 +1,5 @@
 import torch
-from transformers import AutoImageProcessor, AutoModelForObjectDetection, logging
+from transformers import DetrImageProcessor, AutoModelForObjectDetection, logging
 import logging as python_logging
 from PIL import Image
 import io
@@ -13,9 +13,14 @@ try:
 except ImportError:
     import requests as _http
 
-from config import registo, garantir_ambiente_carregado
+from config import registo, garantir_ambiente_carregado, env_bool, env_int
 
 garantir_ambiente_carregado()
+
+# Limitar o uso de CPU do PyTorch para evitar 500% de uso
+# Em containers com pouca RAM/CPU, 1 ou 2 threads são o ideal.
+torch.set_num_threads(1)
+torch.set_num_interop_threads(1)
 
 CONFIANCA_MIN_TABELA     = float(os.getenv("TABLE_MIN_CONFIDENCE", 0.75))
 CONFIANCA_MIN_ESTRUTURA  = float(os.getenv("STRUCTURE_MIN_CONFIDENCE", 0.4))
@@ -39,19 +44,86 @@ _MARGEM_PONTUACAO_PROXIMA = 0.10
 NOME_DETETOR = "microsoft/table-transformer-detection"
 NOME_ESTRUTURA = "microsoft/table-transformer-structure-recognition"
 
-registo.info(f"A carregar modelo...")
-
 logging.set_verbosity_error()
 python_logging.getLogger("transformers.modeling_utils").setLevel(python_logging.ERROR)
 
-processador_detecao  = AutoImageProcessor.from_pretrained(NOME_DETETOR, use_fast=True)
-modelo_detecao      = AutoModelForObjectDetection.from_pretrained(NOME_DETETOR)
-processador_estrutura = AutoImageProcessor.from_pretrained(NOME_ESTRUTURA, use_fast=True)
-modelo_estrutura    = AutoModelForObjectDetection.from_pretrained(NOME_ESTRUTURA)
+_modelos_carregados = False
+_ultimo_uso_modelo = 0.0
+_UNLOAD_TIMEOUT = env_int("UNLOAD_MODELS_AFTER_S", 0)
 
-dispositivo = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-modelo_detecao.to(dispositivo).eval()
-modelo_estrutura.to(dispositivo).eval()
+processador_detecao = None
+modelo_detecao = None
+processador_estrutura = None
+modelo_estrutura = None
+dispositivo = None
+
+
+def _garantir_modelos():
+    """Carrega os modelos IA se ainda não foram carregados (lazy loading)."""
+    global _modelos_carregados, _ultimo_uso_modelo
+    global processador_detecao, modelo_detecao
+    global processador_estrutura, modelo_estrutura, dispositivo
+
+    if _modelos_carregados:
+        _ultimo_uso_modelo = time.monotonic()
+        return
+
+    registo.info("A carregar modelos IA (lazy)...")
+    t0 = time.monotonic()
+
+    processador_detecao = DetrImageProcessor.from_pretrained(NOME_DETETOR)
+    modelo_detecao = AutoModelForObjectDetection.from_pretrained(NOME_DETETOR)
+    processador_estrutura = DetrImageProcessor.from_pretrained(NOME_ESTRUTURA)
+    modelo_estrutura = AutoModelForObjectDetection.from_pretrained(NOME_ESTRUTURA)
+
+    dispositivo = torch.device("cpu")
+    modelo_detecao.to(dispositivo).eval()
+    modelo_estrutura.to(dispositivo).eval()
+
+    _modelos_carregados = True
+    _ultimo_uso_modelo = time.monotonic()
+    registo.info(f"Modelos IA carregados em {time.monotonic() - t0:.1f}s ({dispositivo})")
+
+
+def descarregar_modelos():
+    """Liberta os modelos IA da memória."""
+    global _modelos_carregados
+    global processador_detecao, modelo_detecao
+    global processador_estrutura, modelo_estrutura, dispositivo
+
+    if not _modelos_carregados:
+        return
+
+    registo.info("A descarregar modelos IA para libertar memória...")
+    processador_detecao = None
+    modelo_detecao = None
+    processador_estrutura = None
+    modelo_estrutura = None
+    dispositivo = None
+    _modelos_carregados = False
+
+    import gc
+    gc.collect()
+    registo.info("Modelos IA descarregados")
+
+
+def modelos_carregados() -> bool:
+    """Retorna True se os modelos estão em memória."""
+    return _modelos_carregados
+
+
+async def verificar_descarga_modelos():
+    """Tarefa de background: descarrega modelos se ociosos há mais de UNLOAD_MODELS_AFTER_S."""
+    if _UNLOAD_TIMEOUT <= 0:
+        return
+    while True:
+        await asyncio.sleep(30)
+        if _modelos_carregados and (time.monotonic() - _ultimo_uso_modelo) > _UNLOAD_TIMEOUT:
+            descarregar_modelos()
+
+
+if env_bool("PRELOAD_MODELS", False):
+    _garantir_modelos()
 
 UA_HTTP = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -232,6 +304,7 @@ def _caixa_valida_geometricamente(caixa: list, area_imagem: int, pontuacao_s1: f
 
 def detetar_tabelas_em_imagem_pil(imagem: Image.Image) -> tuple:
     try:
+        _garantir_modelos()
         area_imagem = imagem.width * imagem.height
         candidatos_s1, _, pontuacao_max_s1 = _detetar_objetos(
             processador_detecao, modelo_detecao, imagem, CONFIANCA_MIN_TABELA

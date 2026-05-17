@@ -6,9 +6,11 @@ import { useEffect, useRef, useState } from "react"
 import {
   AlertTriangle,
   ArrowLeft,
+  Clock,
   Copy,
   ExternalLink,
   Image as ImageIcon,
+  ListOrdered,
   RefreshCw,
   Trash2,
   Zap,
@@ -197,7 +199,7 @@ export function TaskDetail({ id }: Props) {
                     ? `Tarefa com ${urls.length} URLs`
                     : nomeDominio(tarefa.url_alvo)}
                 </h1>
-                <StateBadge estado={tarefa.estado} />
+                <StateBadge estado={tarefa.estado} posicaoFila={tarefa.posicao_fila} />
                 {running && (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-600 animate-pulse">
                     <RefreshCw className="size-3 animate-spin" />
@@ -259,6 +261,31 @@ export function TaskDetail({ id }: Props) {
           </div>
         </div>
 
+        {tarefa.estado === "na_fila" && (
+          <Card className="border-amber-500/30 bg-amber-500/5">
+            <CardContent className="flex items-center gap-4 py-5">
+              <div className="flex size-12 items-center justify-center rounded-full bg-amber-500/15">
+                <ListOrdered className="size-6 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                  {tarefa.posicao_fila != null
+                    ? `Posição #${tarefa.posicao_fila} na fila`
+                    : "Na fila de espera"}
+                </h3>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Esta tarefa será processada assim que as tarefas anteriores terminarem.
+                  A página atualiza automaticamente quando a execução iniciar.
+                </p>
+              </div>
+              <div className="hidden sm:flex items-center gap-2">
+                <Clock className="size-4 text-amber-500 animate-pulse" />
+                <span className="text-xs font-medium text-amber-600 dark:text-amber-400">A aguardar</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {tarefa.erro && (
           <Alert variant="destructive">
             <AlertTriangle className="size-4" />
@@ -273,7 +300,7 @@ export function TaskDetail({ id }: Props) {
             <TabsTrigger
               value="resultados"
               className="gap-0"
-              disabled={tarefa.estado === "em_execucao"}
+              disabled={tarefa.estado === "em_execucao" || tarefa.estado === "na_fila"}
             >
               Resultados
             </TabsTrigger>
@@ -282,7 +309,6 @@ export function TaskDetail({ id }: Props) {
 
           <TabsContent value="progresso" className="mt-4">
             <TaskProgressCard tarefa={tarefa} />
-            
           </TabsContent>
 
           <TabsContent value="resultados" className="mt-4">

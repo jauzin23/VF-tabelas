@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, Loader2, XCircle } from "lucide-react"
+import { CheckCircle2, Clock, ListOrdered, Loader2, XCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { rotuloEstado } from "@/lib/format"
@@ -6,10 +6,11 @@ import type { EstadoTarefa } from "@/lib/types"
 
 interface Props {
   estado: EstadoTarefa
+  posicaoFila?: number | null
   className?: string
 }
 
-export function StateBadge({ estado, className }: Props) {
+export function StateBadge({ estado, posicaoFila, className }: Props) {
   let icone = Clock
   let estilos = "bg-muted text-muted-foreground"
   let animar = false
@@ -18,6 +19,10 @@ export function StateBadge({ estado, className }: Props) {
     case "pendente":
       icone = Clock
       estilos = "bg-muted text-foreground"
+      break
+    case "na_fila":
+      icone = ListOrdered
+      estilos = "bg-amber-500/15 text-amber-600 border-amber-500/30 dark:text-amber-400"
       break
     case "em_execucao":
       icone = Loader2
@@ -43,6 +48,9 @@ export function StateBadge({ estado, className }: Props) {
     >
       <Icone className={cn("size-3.5", animar && "animate-spin")} />
       {rotuloEstado(estado)}
+      {estado === "na_fila" && posicaoFila != null && (
+        <span className="tabular-nums">#{posicaoFila}</span>
+      )}
     </Badge>
   )
 }

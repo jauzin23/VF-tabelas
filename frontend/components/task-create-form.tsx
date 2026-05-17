@@ -96,9 +96,15 @@ export function TaskCreateForm({ noCard = false }: { noCard?: boolean }) {
         }
         const t = await api.criarTarefa(url, opcoes)
         adicionar()
-        toast.success("Tarefa criada", {
-          description: "A redirecionar para o acompanhamento…",
-        })
+        if (t.posicao_fila && t.posicao_fila > 1) {
+          toast.success("Tarefa enfileirada", {
+            description: `Na fila — posição #${t.posicao_fila}. Será processada assim que a tarefa atual terminar.`,
+          })
+        } else {
+          toast.success("Tarefa criada", {
+            description: "A redirecionar para o acompanhamento…",
+          })
+        }
         router.push(`/tarefas/${t.id}`)
       } else {
         const lista = parseUrls(urlsTexto)
@@ -117,18 +123,32 @@ export function TaskCreateForm({ noCard = false }: { noCard?: boolean }) {
         }
         const t = await api.criarTarefaLote(lista)
         adicionar()
-        toast.success("Tarefa em lote criada", {
-          description: `${lista.length} URLs enviados.`,
-        })
+        if (t.posicao_fila && t.posicao_fila > 1) {
+          toast.success("Tarefa em lote enfileirada", {
+            description: `${lista.length} URLs — posição #${t.posicao_fila} na fila.`,
+          })
+        } else {
+          toast.success("Tarefa em lote criada", {
+            description: `${lista.length} URLs enviados.`,
+          })
+        }
         router.push(`/tarefas/${t.id}`)
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro desconhecido"
-      toast.error("Falha ao criar tarefa", { description: msg })
+      // Mensagem específica para fila cheia (503)
+      if (msg.includes("fila") || msg.includes("ocupado") || msg.includes("503")) {
+        toast.error("Servidor ocupado", {
+          description: "A fila de tarefas está cheia. Aguarda que algumas terminem e tenta novamente.",
+        })
+      } else {
+        toast.error("Falha ao criar tarefa", { description: msg })
+      }
     } finally {
       setASubmeter(false)
     }
   }
+
 
   const urlsParsed = parseUrls(urlsTexto)
 
