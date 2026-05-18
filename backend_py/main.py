@@ -1,5 +1,5 @@
 """
-main.py — Ponto de entrada da API FastAPI.
+main.py - Ponto de entrada da API FastAPI.
 Agrega todas as rotas, middleware e gestão do ciclo de vida.
 Integra o sistema de filas para containers com pouca RAM.
 """
@@ -141,7 +141,7 @@ async def api_criar_tarefa(carga: CargaCriarTarefa):
         except asyncio.QueueFull:
             raise HTTPException(
                 status_code=503,
-                detail="Servidor ocupado — a fila de tarefas está cheia. Tente mais tarde."
+                detail="Servidor ocupado - a fila de tarefas está cheia. Tente mais tarde."
             )
         return {
             "id":        tarefa["id"],
@@ -225,7 +225,7 @@ async def api_paginacao_multurls(carga: CargaPaginacao):
         except asyncio.QueueFull:
             raise HTTPException(
                 status_code=503,
-                detail="Servidor ocupado — a fila de tarefas está cheia. Tente mais tarde."
+                detail="Servidor ocupado - a fila de tarefas está cheia. Tente mais tarde."
             )
         return {
             "id":        tarefa["id"],

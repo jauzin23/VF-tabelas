@@ -1,5 +1,5 @@
 """
-extrator/imagens.py — Extração de imagens e dados Next.js de HTML/DOM.
+extrator/imagens.py - Extração de imagens e dados Next.js de HTML/DOM.
 
 Antes: localizador_imagens.py + dados_next.py
 """

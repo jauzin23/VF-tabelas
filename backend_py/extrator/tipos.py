@@ -1,5 +1,5 @@
 """
-extrator/tipos.py — Dataclasses e utilitários de URL do extrator.
+extrator/tipos.py - Dataclasses e utilitários de URL do extrator.
 
 Antes: tipos.py + utilitarios_url.py
 """

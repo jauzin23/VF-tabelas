@@ -1,5 +1,5 @@
 """
-extrator/suporte.py — Cliente HTTP e classificador heurístico de imagens.
+extrator/suporte.py - Cliente HTTP e classificador heurístico de imagens.
 
 Antes: cliente_http.py + classificador.py
 """

@@ -1,5 +1,5 @@
 """
-extrator/paginas.py — Deteção e fanout de paginação.
+extrator/paginas.py - Deteção e fanout de paginação.
 
 Antes: extrator/paginacao.py
 """

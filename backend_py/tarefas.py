@@ -1,5 +1,5 @@
 """
-tarefas.py — Gestão de estado, persistência, fila global e eventos (SSE) de tarefas.
+tarefas.py - Gestão de estado, persistência, fila global e eventos (SSE) de tarefas.
 
 Sistema de filas FIFO para containers com pouca RAM:
 - Apenas MAX_CONCURRENT_TASKS tarefas executam em simultâneo (default: 1)
@@ -415,7 +415,7 @@ class FilaGlobal:
             try:
                 await executar_tarefa(id_tarefa)
             except Exception as e:
-                registo.error(f"[Fila] Worker {worker_id} — erro na tarefa {id_tarefa}: {e}")
+                registo.error(f"[Fila] Worker {worker_id} - erro na tarefa {id_tarefa}: {e}")
             finally:
                 async with self._bloqueio:
                     self._tarefa_ativa = None
@@ -492,7 +492,6 @@ def inicializar_tarefa(carga_util):
             "concorrencia_analise":     opcoes.get("concorrencia_analise", _ambiente_int("ANALYSIS_CONCURRENCY", 2)),
             "seguir_paginacao":         bool(opcoes.get("seguir_paginacao", True)),
             "seguir_detalhe":           bool(opcoes.get("seguir_detalhe", True)),
-            "maxJobSeconds":            opcoes.get("maxJobSeconds", _ambiente_int("JOB_TIMEOUT_S", 600)),
         },
         "progresso": {
             "paginas_descobertas": 0, "paginas_processadas": 0,

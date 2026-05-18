@@ -1,9 +1,11 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# NEXT_PUBLIC_* são embutidas em build-time pelo Next.js
-ARG NEXT_PUBLIC_API_URL=http://localhost:4000
+# NEXT_PUBLIC_* são embutidas em build-time pelo Next.js a partir dos args do docker-compose
+ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_API_KEY
+ENV NEXT_PUBLIC_API_KEY=$NEXT_PUBLIC_API_KEY
 
 COPY package.json package-lock.json* pnpm-lock.yaml* ./
 RUN npm ci --legacy-peer-deps

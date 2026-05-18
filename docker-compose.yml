@@ -13,9 +13,8 @@ services:
           memory: 512M
     environment:
       # =======================================================================
-      # NOTA IMPORTANTE: Para uma documentação exaustiva e detalhada sobre
-      # a função de cada uma destas variáveis de ambiente, consulta o README.md
-      # na secção "Referência Completa de Configuração".
+      # NOTA IMPORTANTE: Para mais informação sobre cada uma destas variáveis de ambiente,
+      # consulta o README.md
       # =======================================================================
 
       # Servidor e Sistema
@@ -24,8 +23,8 @@ services:
       ALLOWED_ORIGINS: "*"
 
       # Segurança (Chaves de API)
-      # Chaves separadas por vírgula, exemplo: fk_vf_................,sk_vf_................
-      API_KEYS: ""
+      # Chaves separadas por vírgula, exemplo: fk_vf_...,sk_vf_...
+      API_KEYS: "fk_vf_a1b2c3d4e5f60718293a4b5c6d7e8f90,sk_vf_a1b2c3d4e5f60718293a4b5c6d7e8f90"
 
       # Valores de fallback (Usados caso o pedido não envie opções)
       MAX_PAGES: 50
@@ -33,7 +32,6 @@ services:
       PAGE_TIMEOUT_MS: 30000
       CRAWLER_CONCURRENCY: 4
       BROWSER_CONCURRENCY: 3
-      JOB_TIMEOUT_S: 1200
 
       # Filtros e Limiares
       MIN_IMAGE_WIDTH: 120
@@ -61,7 +59,7 @@ services:
     build:
       context: ./frontend
       args:
-        # URL da API do backend — vista pelo browser do utilizador final
+        # URL da API do backend - vista pelo browser do utilizador final
         NEXT_PUBLIC_API_URL: http://localhost:4000
         # Chave de API dedicada ao frontend
         NEXT_PUBLIC_API_KEY: fk_vf_a1b2c3d4e5f60718293a4b5c6d7e8f90

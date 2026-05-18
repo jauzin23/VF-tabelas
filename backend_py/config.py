@@ -1,5 +1,5 @@
 """
-config.py — Configuração global: logging e ambiente.
+config.py - Configuração global: logging e ambiente.
 
 Antes: utilitarios/registo.py + utilitarios/ambiente.py
 """
