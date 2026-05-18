@@ -714,7 +714,6 @@ async def rastrear_site(
 
     seguir_paginacao = opcoes.get("seguir_paginacao", True)
     seguir_detalhe = opcoes.get("seguir_detalhe", True)
-    tempo_limite_job = _opc_int("tempo_limite_job_segundos", env_int("JOB_TIMEOUT_S", 600))
 
     hosts_alvo = set()
     for u in urls_iniciais:

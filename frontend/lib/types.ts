@@ -4,7 +4,6 @@ export interface OpcoesTarefa {
   maxPages?: number;
   maxDepth?: number;
   pageTimeoutMs?: number;
-  maxJobSeconds?: number;
   concurrency?: number;
   analysisConcurrency?: number;
   maxImagesPerPage?: number | null;

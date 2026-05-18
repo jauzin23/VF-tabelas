@@ -1,22 +1,18 @@
-# Ambiente - nunca versionar o .env real
 .env
 .env.local
 !.env.example
 
-# Frontend
 node_modules/
 .next/
 dist/
 coverage/
 
-# Backend Python
 __pycache__/
 *.pyc
 .venv*/
 .crawlee/
 storage/
 
-# Dados gerados (ignora em qualquer subpasta, ex: backend_py/data)
 **/data/tarefas/*
 !**/data/tarefas/.gitkeep
 **/data/models/*
@@ -24,14 +20,13 @@ storage/
 **/data/jobs/*
 !**/data/jobs/.gitkeep
 
-# Ignorar pastas de dados persistentes no root ou backend
 data/
 **/data/
 
-# Logs
 *.log
 
-# Imagens de teste e treino
 imagens-teste/*
 /treino_ia/negativos/*
 **/scratch/
+
+*.txt

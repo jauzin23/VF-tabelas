@@ -384,11 +384,6 @@ function ConfiguracaoCard({
                   ? `${(tarefa.opcoes.pageTimeoutMs / 1000).toFixed(0)} s`
                   : "-"}
               </Linha>
-              <Linha rotulo="Timeout total">
-                {tarefa.opcoes.maxJobSeconds
-                  ? `${Math.round(tarefa.opcoes.maxJobSeconds / 60)} min`
-                  : "-"}
-              </Linha>
               <Linha rotulo="Paginação">
                 {tarefa.opcoes.seguirPaginacao ? "Sim" : "Não"}
               </Linha>

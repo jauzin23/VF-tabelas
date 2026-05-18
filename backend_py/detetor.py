@@ -329,7 +329,7 @@ def detetar_tabelas_em_imagem_pil(imagem: Image.Image) -> tuple:
 
         if not tabelas_candidatas:
             if pontuacao_max_s1 < CONFIANCA_MIN_TABELA and area_imagem < (800 * 600):
-                registo.info("  [FALLBACK] S1 falhou — a tentar S2 na imagem completa")
+                registo.info("  [FALLBACK] S1 falhou - a tentar S2 na imagem completa")
                 estrutura_total = _validar_estrutura(imagem)
                 if estrutura_total["valido"]:
                     qualidade = min(estrutura_total["pontuacao_min_linhas"], estrutura_total["pontuacao_min_colunas"])
@@ -375,7 +375,7 @@ def detetar_tabelas_em_imagem_pil(imagem: Image.Image) -> tuple:
 
             valida, motivo = _caixa_valida_geometricamente(caixa, area_imagem, pontuacao_s1=pontuacao)
             if not valida:
-                registo.info(f"  [GEO-REJECT] #{idx+1} s1={pontuacao:.3f} — {motivo}")
+                registo.info(f"  [GEO-REJECT] #{idx+1} s1={pontuacao:.3f} - {motivo}")
                 continue
 
             enchimento = 5
@@ -411,7 +411,7 @@ def detetar_tabelas_em_imagem_pil(imagem: Image.Image) -> tuple:
                 if n_linhas <= 5 and n_colunas >= 4 and n_cabecalhos <= 1 and pontuacao < 0.80:
                     registo.info(
                         f"  [SPARSE-REJECT] #{idx+1} {n_linhas}Lx{n_colunas}C "
-                        f"cab={n_cabecalhos} s1={pontuacao:.3f} — layout esparso"
+                        f"cab={n_cabecalhos} s1={pontuacao:.3f} - layout esparso"
                     )
                     continue
 
@@ -420,7 +420,7 @@ def detetar_tabelas_em_imagem_pil(imagem: Image.Image) -> tuple:
                 if n_colunas >= 4 and n_linhas >= 8 and n_cabecalhos <= 1 and pontuacao < 0.70:
                     registo.info(
                         f"  [FLYER-REJECT] #{idx+1} {n_linhas}Lx{n_colunas}C "
-                        f"cab={n_cabecalhos} s1={pontuacao:.3f} — layout tipo flyer"
+                        f"cab={n_cabecalhos} s1={pontuacao:.3f} - layout tipo flyer"
                     )
                     continue
 
@@ -429,7 +429,7 @@ def detetar_tabelas_em_imagem_pil(imagem: Image.Image) -> tuple:
                 if n_colunas <= 2 and n_linhas >= 10 and pontuacao < 0.65 and n_cabecalhos <= 2:
                     registo.info(
                         f"  [TITLE-BLOCK-REJECT] #{idx+1} {n_linhas}Lx{n_colunas}C "
-                        f"s1={pontuacao:.3f} — bloco de título técnico"
+                        f"s1={pontuacao:.3f} - bloco de título técnico"
                     )
                     continue
 
@@ -442,7 +442,7 @@ def detetar_tabelas_em_imagem_pil(imagem: Image.Image) -> tuple:
                     if _cobertura_h < 0.45 and pontuacao < 0.85:
                         registo.info(
                             f"  [BANNER-REJECT] #{idx+1} banner ({_prop_imagem:.2f}:1) "
-                            f"cobertura={_cobertura_h:.0%} s1={pontuacao:.3f} — UI em banner"
+                            f"cobertura={_cobertura_h:.0%} s1={pontuacao:.3f} - UI em banner"
                         )
                         continue
                 # ─────────────────────────────────────────────────────────────────────
@@ -504,7 +504,7 @@ def detetar_tabelas_em_imagem_pil(imagem: Image.Image) -> tuple:
                 # Rejeitar estruturas rasas (2 linhas) com poucos headers em 3+ colunas
                 if n_linhas <= 2 and n_colunas >= 3:
                     if n_cabecalhos <= 1:
-                        registo.info(f"  [SHALLOW-REJECT] #{idx+1} {n_linhas}Lx{n_colunas}C cab={n_cabecalhos} — estrutura rasa")
+                        registo.info(f"  [SHALLOW-REJECT] #{idx+1} {n_linhas}Lx{n_colunas}C cab={n_cabecalhos} - estrutura rasa")
                         continue
 
                 # Caso especial: tabelas sem cabecalhos ou com cabecalhos muito fracos
@@ -599,7 +599,7 @@ def detetar_tabelas_em_imagem_pil(imagem: Image.Image) -> tuple:
                 else:
                     registo.info(f"  [QUAL-REJECT] #{idx+1} s1={pontuacao:.3f} q={qualidade:.3f} < {limiar_confirmacao}")
             else:
-                registo.info(f"  [STRUC-REJECT] #{idx+1} s1={pontuacao:.3f} — {estrutura['motivo']}")
+                registo.info(f"  [STRUC-REJECT] #{idx+1} s1={pontuacao:.3f} - {estrutura['motivo']}")
 
         tem_tabela = len(tabelas_confirmadas) > 0
         pontuacao_maxima = max((t["pontuacao"] for t in tabelas_confirmadas), default=0.0)

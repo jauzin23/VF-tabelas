@@ -1,5 +1,5 @@
 """
-auth.py — Módulo de Autenticação e Segurança via API Keys.
+auth.py - Módulo de Autenticação e Segurança via API Keys.
 Garante a verificação estrita de chaves nos endpoints protegidos.
 """
 from typing import Optional
