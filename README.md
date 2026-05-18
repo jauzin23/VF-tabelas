@@ -1,6 +1,6 @@
 # VF-Tabelas - Deteção Automática de Tabelas de Dados em Websites
 
-O **VF-Tabelas** é uma ferramenta para dar crawl a websites, extrair imagens e analisar visualmente cada elemento através de modelos IA ( **Table Transformer da Microsoft**). O seu objetivo principal é identificar imagens ou capturas de ecrã que contêm tabelas de dados.
+O **VF-Tabelas** é uma ferramenta para dar crawl a websites, extrair imagens e analisar visualmente cada elemento através de modelos IA (**YOLO11 da Ultralytics**). O seu objetivo principal é identificar imagens ou capturas de ecrã que contêm tabelas de dados.
 
 ---
 
@@ -8,8 +8,7 @@ O **VF-Tabelas** é uma ferramenta para dar crawl a websites, extrair imagens e 
 
 - **Crawl Avançado**: Implementa automação de browsers headless (`Patchright`/`Playwright` + Chromium) para lidar com sites dinâmicos.
 - **Descoberta Inteligente de Paginação**: Identifica automaticamente padrões de paginação no DOM para extrair catálogos inteiros em paralelo.
-- **Análise de IA em Duas Fases**: Utiliza modelos para detetar candidatos a tabela e, posteriormente, valida a sua estrutura (linhas, colunas, cabeçalhos e alinhamentos).
-- **Filtragem de Anti-Falsos-Positivos**: Distingue tabelas reais de elementos que imitam grelhas (como calendários, listas e entre outros...).
+- **Análise de IA com YOLO11**: Utiliza inferência direta baseada em YOLO11 para detetar tabelas completas de forma rápida e eficiente.
 - **Otimização de Memória**: Implementa uma Fila Global, descarregamento automático de modelos de IA e desativação de recursos ociosos para garantir estabilidade.
 - **Configuração Centralizada**: Toda a configuração do sistema está no ficheiro `docker-compose.yml`.
 - **Feedback em Tempo Real via SSE**: Transmite cada progresso, página descoberta, imagem encontrada e resultado de análise instantaneamente para o frontend através de _Server-Sent Events_.
@@ -20,50 +19,40 @@ O **VF-Tabelas** é uma ferramenta para dar crawl a websites, extrair imagens e 
 
 ### 1. Fila Global
 
-Quando múltiplas tarefa são submetidas (`POST /api/tarefas` ou `POST /api/paginacao-multurls`), as tarefas entram numa **Fila Global**. Configurado com `MAX_CONCURRENT_TASKS=1`, apenas uma tarefa é executada de cada vez, garantindo que a largura de banda, a CPU e a RAM estão 100% dedicadas ao trabalho ativo.
+Quando múltiplas tarefa são submetidas (`POST /api/tarefas` ou `POST /api/paginacao-multurls`), as tarefas entram numa **Fila Global**. Configurado com `MAX_CONCURRENT_TASKS=1`, apenas uma tarefa é executada de cada vez, garantindo que a largura de banda, a CPU e a RAM estão dedicadas ao trabalho ativo.
 
 ### 2. Gestão Dinâmica de RAM
 
-Os modelos da Microsoft consomem centenas de megabytes de memória. Para coexistirem pacificamente com o Chromium foram implementadas as seguintes optimizações:
+Apesar da eficiência do YOLO11, a coexistência com o Chromium num ambiente limitado exige otimizações rigorosas:
 
-- **_Lazy Loading_**: Os modelos só são carregados para a RAM no momento em que a primeira imagem precisa de ser analisada.
+- **_Lazy Loading_**: O modelo só é carregado para a RAM no momento em que a primeira imagem precisa de ser analisada.
 - **Descarregamento Proativo**: Se o crawler estiver a navegar em páginas web e a extrair DOM, a IA é totalmente removida da memória, libertando recursos para o browser. A IA só regressa à RAM quando a extração termina e é iniciada a análise.
 
 ---
 
 ## Crawler e Extração de Imagens
 
-O crawler utiliza uma estratégia para garantir precisão em páginas renderizadas via JavaScript. Para garantir que nenhum dado fica oculto antes da captura, o sistema executa automaticamente:
+O crawler utiliza uma estratégia avançada para garantir precisão em páginas renderizadas via JavaScript. Para garantir que nenhum dado fica oculto antes da captura, o sistema executa automaticamente:
 
 - **Aceitação Automática de Cookies**: Injeta e executa JavaScript para detetar e clicar em botões de consentimento ("Aceitar todos", "Concordo", "Allow all").
 - **Estabilização de DOM**: Aguarda não apenas por eventos padrão (`domcontentloaded`), mas monitoriza a contagem de elementos `<img>` e `<a>` no DOM. O crawler só avança quando o número de elementos estabiliza.
 - **Scroll Incremental Completo**: Simula um utilizador real a fazer scroll até ao final da página para forçar o carregamento de todas as imagens.
-- **Limite de Abas Abertas (`BROWSER_CONCURRENCY`)**: Limita o número de abas do Chromium que podem estar abertas em simultâneo, prevenindo que um site com dezenas de páginas de paginação trave o sistema.
+- **Limite de Abas Abertas (`BROWSER_CONCURRENCY`)**: Limita o número de abas do Chromium que podem estar abertas em simultâneo.
 
-Para evitar sobrecarregar o pipeline de IA com lixo visual, as imagens capturadas passam por uma filtração antes da análise:
+Para evitar sobrecarregar a IA com lixo visual, as imagens capturadas passam por uma filtração inicial:
 
 - **Rejeição de URLs**: Eliminação automática de SVGs, tiles de mapas interativos e caminhos de URL que contenham `/icon`, `/logo`, `/avatar`, `favicon`, `/thumb`, `pixel`.
-- **Validação de Dimensões (`MIN_IMAGE_WIDTH` / `MIN_IMAGE_HEIGHT`)**: Qualquer imagem com largura ou altura inferior aos valores defenidos é imediatamente descartada.
+- **Validação de Dimensões (`MIN_IMAGE_WIDTH` / `MIN_IMAGE_HEIGHT`)**: Qualquer imagem muito pequena é descartada.
 
 ---
 
-## Análise de IA
+## Análise de IA (YOLO11)
 
-A análise está dividida em duas fases:
+A análise das imagens é efetuada num único passo utilizando o modelo YOLO11 otimizado:
 
-### Fase 1: S1 - Deteção de Regiões Candidatas
-
-O modelo `table-transformer-detection` analisa a imagem e devolve caixas (_bounding boxes_) com uma pontuação de confiança.
-
-- **Validação Geométrica S1**: A caixa candidata é testada contra regras de viabilidade física. Tem de representar pelo menos 5% da área total da imagem (`TABLE_MIN_AREA_PERCENT`), possuir dimensões mínimas em pixels (120x50px) e não apresentar uma proporção de aspeto bizarra ou extremamente distorcida (acima de 15:1).
-
-### Fase 2: S2 - Reconhecimento e Validação Estrutural
-
-O sistema faz um recorte da região candidata detetada na Fase 1 (aplicando uma margem de 5px) e envia o recorte para o modelo `table-transformer-structure-recognition`. Este modelo identifica elementos: linhas de tabela, colunas de tabela e cabeçalhos.
-
-### Filtragem de Falsos-Positivos
-
-O maior problema no uso de modelos genéricos é a classificação acidental de tabelas em imagens comuns. Esta ferramenta integra um conjunto de filtros para eliminar falsos positivos.
+- O modelo redimensiona internamente as imagens consoante a configuração `YOLO_IMGSZ` (padrão: 1024px) para garantir que consegue captar a estrutura global da imagem.
+- Realiza a inferência devolvendo a precisão (confiança) com que encontrou uma tabela.
+- Se a confiança for igual ou superior a `TABLE_MIN_CONFIDENCE`, o sistema aceita a imagem como uma "Tabela Detetada".
 
 ---
 
@@ -139,12 +128,11 @@ Para criar chaves de API fortes, pode utilizar qualquer um dos seguintes método
 
 | Variável               | Padrão | Descrição                                                                                     |
 | :--------------------- | :----- | :-------------------------------------------------------------------------------------------- |
-| `MIN_IMAGE_WIDTH`      | `120`  | Largura mínima exigida.                                                                       |
-| `MIN_IMAGE_HEIGHT`     | `80`   | Altura mínima exigida.                                                                        |
-| `MIN_IMAGE_AREA`       | `9600` | Área mínima total exigida.                                                                    |
-| `TABLE_MIN_CONFIDENCE` | `0.5`  | Mínimo de pontuação de confiança (0.0 a 1.0) exigido pelo modelo de deteção na primeira fase. |
-| `STRUCTURE_MIN_ROWS`   | `2`    | Número mínimo de linhas exigidas pela validação estrutural na segunda fase.                   |
-| `STRUCTURE_MIN_COLS`   | `2`    | Número mínimo de colunas exigidas pela validação estrutural na segunda fase.                  |
+| `MIN_IMAGE_WIDTH`      | `120`  | Largura mínima exigida antes de submeter a imagem à IA.                                       |
+| `MIN_IMAGE_HEIGHT`     | `80`   | Altura mínima exigida antes de submeter a imagem à IA.                                        |
+| `MIN_IMAGE_AREA`       | `9600` | Área mínima total exigida antes de submeter a imagem à IA.                                    |
+| `TABLE_MIN_CONFIDENCE` | `0.5`  | Mínimo de pontuação de confiança (0.0 a 1.0) exigido pelo modelo YOLO11.                      |
+| `YOLO_IMGSZ`           | `1024` | Tamanho de imagem (em pixels) para o qual o modelo YOLO fará o resize interno durante a inferência. |
 
 ### Fila Global e Gestão de Memória RAM
 

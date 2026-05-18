@@ -43,10 +43,9 @@ services:
       MIN_IMAGE_HEIGHT: 80
       MIN_IMAGE_AREA: 9600
       TABLE_MIN_CONFIDENCE: 0.5
+      YOLO_IMGSZ: 1024
       ANALYSIS_CONCURRENCY: 1
       IMAGE_HTTP_RETRIES: 2
-      STRUCTURE_MIN_ROWS: 2
-      STRUCTURE_MIN_COLS: 2
 
       # Fila e Gestão de Memória
       MAX_QUEUE_SIZE: 0 # 0 = sem limite
