@@ -5,8 +5,6 @@ Integra o sistema de filas para containers com pouca RAM.
 """
 import asyncio
 import os
-import shutil
-import uuid
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
@@ -180,23 +178,19 @@ async def api_imagens_tarefa(id_tarefa: str):
 
 @app.post("/api/modelo/detetar-tabela")
 async def api_detetar_tabela(ficheiro: UploadFile = File(...)):
-    id_temp = str(uuid.uuid4())
-    ext = os.path.splitext(ficheiro.filename)[1]
-    caminho_temp = f"temp_{id_temp}{ext}"
-    
     try:
-        with open(caminho_temp, "wb") as buffer:
-            shutil.copyfileobj(ficheiro.file, buffer)
+        conteudo = await ficheiro.read()
+        from PIL import Image
+        import io
+        imagem = Image.open(io.BytesIO(conteudo)).convert("RGB")
         
-        resultado, _ = await detetar_tabelas_em_imagem(caminho_temp)
+        resultado, _ = await detetar_tabelas_em_imagem(imagem)
         if not isinstance(resultado, dict): return JSONResponse(content=[])
         
         return JSONResponse(content={"tem_tabela": resultado.get("tem_tabela", False)})
     except Exception as e:
-        registo.error(f"Erro ao processar imagem: {str(e)}", exc_info=True)
+        registo.error(f"Erro ao processar imagem em memória: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro ao processar imagem: {str(e)}")
-    finally:
-        if os.path.exists(caminho_temp): os.remove(caminho_temp)
 
 
 # ── Rotas: Paginação Multi-URLs ───────────────────────────────────────────────

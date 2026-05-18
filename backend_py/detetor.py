@@ -71,9 +71,11 @@ def _garantir_modelos():
     registo.info("A carregar modelos...")
     t0 = time.monotonic()
 
-    processador_detecao = DetrImageProcessor.from_pretrained(NOME_DETETOR)
+    tamanho_s1 = env_int("S1_IMAGE_SIZE", 600)
+    tamanho_s2 = env_int("S2_IMAGE_SIZE", 600)
+    processador_detecao = DetrImageProcessor.from_pretrained(NOME_DETETOR, size={"shortest_edge": tamanho_s1, "longest_edge": 800})
     modelo_detecao = AutoModelForObjectDetection.from_pretrained(NOME_DETETOR)
-    processador_estrutura = DetrImageProcessor.from_pretrained(NOME_ESTRUTURA)
+    processador_estrutura = DetrImageProcessor.from_pretrained(NOME_ESTRUTURA, size={"shortest_edge": tamanho_s2, "longest_edge": 800})
     modelo_estrutura = AutoModelForObjectDetection.from_pretrained(NOME_ESTRUTURA)
 
     dispositivo = torch.device("cpu")
@@ -185,7 +187,7 @@ def _detetar_objetos(processador, modelo, imagem: Image.Image, limiar: float) ->
     entradas = processador(images=imagem, return_tensors="pt")
     entradas = {k: v.to(dispositivo) for k, v in entradas.items()}
 
-    with torch.no_grad():
+    with torch.inference_mode():
         saidas = modelo(**entradas)
 
     tamanhos_alvo = torch.tensor([imagem.size[::-1]])
