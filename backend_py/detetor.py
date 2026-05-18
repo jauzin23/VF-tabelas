@@ -6,6 +6,7 @@ import io
 import os
 import time
 import asyncio
+import threading
 from urllib.parse import urlparse
 
 try:
@@ -47,6 +48,8 @@ NOME_ESTRUTURA = "microsoft/table-transformer-structure-recognition"
 logging.set_verbosity_error()
 python_logging.getLogger("transformers.modeling_utils").setLevel(python_logging.ERROR)
 
+_bloqueio_modelos = threading.Lock()
+_carregando_modelos = False
 _modelos_carregados = False
 _ultimo_uso_modelo = 0.0
 
@@ -59,7 +62,7 @@ dispositivo = None
 
 def _garantir_modelos():
     """Carrega os modelos IA se ainda não foram carregados (lazy loading)."""
-    global _modelos_carregados, _ultimo_uso_modelo
+    global _modelos_carregados, _carregando_modelos, _ultimo_uso_modelo
     global processador_detecao, modelo_detecao
     global processador_estrutura, modelo_estrutura, dispositivo
 
@@ -67,45 +70,62 @@ def _garantir_modelos():
         _ultimo_uso_modelo = time.monotonic()
         return
 
-    registo.info("A carregar modelos...")
-    t0 = time.monotonic()
+    with _bloqueio_modelos:
+        if _modelos_carregados:
+            _ultimo_uso_modelo = time.monotonic()
+            return
+        
+        if _carregando_modelos:
+            registo.info("Os modelos já estão a ser carregados. A aguardar conclusão...")
+            return
 
-    tamanho_s1 = env_int("S1_IMAGE_SIZE", 600)
-    tamanho_s2 = env_int("S2_IMAGE_SIZE", 600)
-    processador_detecao = DetrImageProcessor.from_pretrained(NOME_DETETOR, size={"shortest_edge": tamanho_s1, "longest_edge": 800})
-    modelo_detecao = AutoModelForObjectDetection.from_pretrained(NOME_DETETOR)
-    processador_estrutura = DetrImageProcessor.from_pretrained(NOME_ESTRUTURA, size={"shortest_edge": tamanho_s2, "longest_edge": 800})
-    modelo_estrutura = AutoModelForObjectDetection.from_pretrained(NOME_ESTRUTURA)
+        registo.info("A carregar modelos...")
+        _carregando_modelos = True
+        try:
+            t0 = time.monotonic()
 
-    dispositivo = torch.device("cpu")
-    modelo_detecao.to(dispositivo).eval()
-    modelo_estrutura.to(dispositivo).eval()
+            tamanho_s1 = env_int("S1_IMAGE_SIZE", 600)
+            tamanho_s2 = env_int("S2_IMAGE_SIZE", 600)
+            processador_detecao = DetrImageProcessor.from_pretrained(NOME_DETETOR, size={"shortest_edge": tamanho_s1, "longest_edge": 800})
+            modelo_detecao = AutoModelForObjectDetection.from_pretrained(NOME_DETETOR)
+            processador_estrutura = DetrImageProcessor.from_pretrained(NOME_ESTRUTURA, size={"shortest_edge": tamanho_s2, "longest_edge": 800})
+            modelo_estrutura = AutoModelForObjectDetection.from_pretrained(NOME_ESTRUTURA)
 
-    _modelos_carregados = True
-    _ultimo_uso_modelo = time.monotonic()
-    registo.info(f"Modelos IA carregados em {time.monotonic() - t0:.1f}s ({dispositivo})")
+            dispositivo = torch.device("cpu")
+            modelo_detecao.to(dispositivo).eval()
+            modelo_estrutura.to(dispositivo).eval()
+
+            _modelos_carregados = True
+            _ultimo_uso_modelo = time.monotonic()
+            registo.info(f"Modelos IA carregados em {time.monotonic() - t0:.1f}s ({dispositivo})")
+        finally:
+            _carregando_modelos = False
 
 
 def descarregar_modelos():
     """Liberta os modelos IA da memória."""
-    global _modelos_carregados
+    global _modelos_carregados, _carregando_modelos
     global processador_detecao, modelo_detecao
     global processador_estrutura, modelo_estrutura, dispositivo
 
-    if not _modelos_carregados:
+    if not _modelos_carregados and not _carregando_modelos:
         return
 
-    registo.info("A descarregar modelos IA para libertar memória...")
-    processador_detecao = None
-    modelo_detecao = None
-    processador_estrutura = None
-    modelo_estrutura = None
-    dispositivo = None
-    _modelos_carregados = False
+    with _bloqueio_modelos:
+        if not _modelos_carregados:
+            return
 
-    import gc
-    gc.collect()
-    registo.info("Modelos IA descarregados")
+        registo.info("A descarregar modelos IA para libertar memória...")
+        processador_detecao = None
+        modelo_detecao = None
+        processador_estrutura = None
+        modelo_estrutura = None
+        dispositivo = None
+        _modelos_carregados = False
+
+        import gc
+        gc.collect()
+        registo.info("Modelos IA descarregados")
 
 
 def modelos_carregados() -> bool:
@@ -131,7 +151,7 @@ async def gestor_ia_ram_loop():
                     registo.info("[Gestor RAM] Tarefa ativa em rastreio. A descarregar IA da RAM...")
                     descarregar_modelos()
             elif not ativas:
-                if not _modelos_carregados:
+                if not _modelos_carregados and not _carregando_modelos:
                     registo.info("[Gestor RAM] Servidor ocioso. A pré-carregar IA na RAM...")
                     await garantir_modelos_assincrono()
         except Exception as e:
@@ -415,14 +435,16 @@ def detetar_tabelas_em_imagem_pil(imagem: Image.Image) -> tuple:
                     )
                     continue
 
-                # B) Grelha de 4+ colunas com muitas linhas mas S1 e headers muito fracos
-                #    → flyers de eventos com blocos de datas organizados em grelha
-                if n_colunas >= 4 and n_linhas >= 8 and n_cabecalhos <= 1 and pontuacao < 0.70:
-                    registo.info(
-                        f"  [FLYER-REJECT] #{idx+1} {n_linhas}Lx{n_colunas}C "
-                        f"cab={n_cabecalhos} s1={pontuacao:.3f} - layout tipo flyer"
-                    )
-                    continue
+                # B) Grelha de 4+ colunas (ex: grelhas de produtos em e-commerce, galerias de fotos)
+                #    Têm <= 1 cabeçalho no total e linhas com grande altura (cards de produto) ou qualidade fraca
+                if n_colunas >= 4 and n_linhas >= 6 and n_cabecalhos <= 1:
+                    altura_linha = estrutura.get("altura_media_linha", 0)
+                    if altura_linha > 80 or pontuacao < 0.95 or qualidade < 0.75:
+                        registo.info(
+                            f"  [PRODUCT-GRID-REJECT] #{idx+1} {n_linhas}Lx{n_colunas}C "
+                            f"cab={n_cabecalhos} h_lin={altura_linha:.1f} s1={pontuacao:.3f} q={qualidade:.3f} - grelha de produtos"
+                        )
+                        continue
 
                 # C) Bloco de título de 2 colunas com muitas linhas e S1 muito baixo
                 #    → blocos de informação em documentos técnicos (plantas, desenhos)
@@ -489,6 +511,13 @@ def detetar_tabelas_em_imagem_pil(imagem: Image.Image) -> tuple:
                 # Restrição para tabelas de 2 colunas (comum em layouts de cards)
                 # Aplicamos mesmo com cabecalhos se a confiança S1 for baixa
                 if n_colunas <= 2:
+                    altura_linha = estrutura.get("altura_media_linha", 0)
+                    # Listas de cards ou widgets UI: poucas colunas, altura de linha grande (>55px) e <= 1 cabeçalho
+                    if altura_linha > 55 and n_cabecalhos <= 1 and n_linhas >= 3:
+                        if not (pontuacao >= 0.99 and qualidade >= 0.92):
+                            registo.info(f"  [UI-CARD-REJECT] #{idx+1} {n_linhas}Lx{n_colunas}C cab={n_cabecalhos} h_lin={altura_linha:.1f} s1={pontuacao:.3f} q={qualidade:.3f} - lista de cards UI")
+                            continue
+
                     if n_linhas >= 8 and not tem_cabecalhos:
                         registo.info(f"  [DENSITY-REJECT] #{idx+1} {n_linhas}Lx{n_colunas}C sem cabecalhos")
                         continue

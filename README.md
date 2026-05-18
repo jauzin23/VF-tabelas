@@ -1,6 +1,6 @@
 # VF-Tabelas - Deteção Automática de Tabelas de Dados em Websites
 
-O **VF-Tabelas** é uma ferramenta para dar crawl websites, extrair imagens e analisar cada elemento visual através de modelos IA ( **Table Transformer da Microsoft**). O seu objetivo principal é identificar imagens ou capturas de ecrã que contêm tabelas de dados.
+O **VF-Tabelas** é uma ferramenta para dar crawl a websites, extrair imagens e analisar visualmente cada elemento através de modelos IA ( **Table Transformer da Microsoft**). O seu objetivo principal é identificar imagens ou capturas de ecrã que contêm tabelas de dados.
 
 ---
 

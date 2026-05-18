@@ -8,14 +8,21 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "1.0"
           memory: 900M
         reservations:
+          cpus: "0.5"
           memory: 512M
     environment:
       # =======================================================================
       # NOTA IMPORTANTE: Para mais informação sobre cada uma destas variáveis de ambiente,
       # consulta o README.md
       # =======================================================================
+
+      # Controlo de Threads CPU (Evita que o PyTorch/AI consuma todos os cores do host)
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
 
       # Servidor e Sistema
       BACKEND_PORT: 4000
@@ -33,12 +40,12 @@ services:
       CRAWLER_CONCURRENCY: 4
       BROWSER_CONCURRENCY: 3
 
-      # Filtros e Limiares
+      # Filtros e Limites
       MIN_IMAGE_WIDTH: 120
       MIN_IMAGE_HEIGHT: 80
       MIN_IMAGE_AREA: 9600
       TABLE_MIN_CONFIDENCE: 0.5
-      ANALYSIS_CONCURRENCY: 2
+      ANALYSIS_CONCURRENCY: 1
       IMAGE_HTTP_RETRIES: 2
       STRUCTURE_MIN_ROWS: 2
       STRUCTURE_MIN_COLS: 2
@@ -49,7 +56,7 @@ services:
       CLEANUP_RESULTS_AFTER_S: 300
       RESULTS_FLUSH_INTERVAL: 100
 
-      # Otimizações do Motor de Browser (Chromium)
+      # Otimizações do Browser
       BROWSER_SINGLE_PROCESS: false
       BROWSER_ARGS_EXTRA: ""
     volumes:
@@ -59,13 +66,10 @@ services:
     build:
       context: ./frontend
       args:
-        # URL da API do backend - vista pelo browser do utilizador final
         NEXT_PUBLIC_API_URL: http://localhost:4000
-        # Chave de API dedicada ao frontend
         NEXT_PUBLIC_API_KEY: fk_vf_a1b2c3d4e5f60718293a4b5c6d7e8f90
     restart: unless-stopped
     ports:
-      # Exposição da porta do frontend (acessível no browser via http://localhost:3001)
       - "3001:3000"
     environment:
       NODE_ENV: production

@@ -93,6 +93,9 @@ class _EstadoJob:
         self.url_para_resultado: dict[str, ImagemEncontrada] = {}
         self.paginas_visitadas: set[str] = set()
         self.paginas_em_fila: set[str] = set()
+        self.paginas_concluidas: set[str] = set()
+        self.paginas_paginacao_descobertas: int = 0
+        self.paginas_paginacao_concluidas: int = 0
         self.caminho_persistencia: str | None = None
         self.bloqueio_resultados = asyncio.Lock()
         self.bloqueio_visitas = asyncio.Lock()
@@ -109,6 +112,34 @@ class _EstadoJob:
             "paginas_paginacao": 0,
         }
         self.bloqueio_estatisticas = asyncio.Lock()
+
+    async def obter_totais(self) -> tuple[int, int]:
+        async with self.bloqueio_visitas:
+            total_normais_desc = len(self.paginas_visitadas) + len(self.paginas_em_fila)
+            total_normais_conc = len(self.paginas_concluidas)
+        async with self.bloqueio_estatisticas:
+            total_pag_desc = self.paginas_paginacao_descobertas
+            total_pag_conc = self.paginas_paginacao_concluidas
+        
+        descobertas = total_normais_desc + total_pag_desc
+        processadas = total_normais_conc + total_pag_conc
+        return descobertas, processadas
+
+    async def emitir_progresso(self, retrochamadas: dict[str, Any]) -> None:
+        if not retrochamadas:
+            return
+        cb_desc = retrochamadas.get("ao_descobrir_paginas")
+        cb_proc = retrochamadas.get("ao_processar_pagina")
+        if not cb_desc and not cb_proc:
+            return
+        
+        descobertas, processadas = await self.obter_totais()
+        if cb_desc:
+            try: cb_desc(descobertas)
+            except Exception: pass
+        if cb_proc:
+            try: cb_proc(processadas)
+            except Exception: pass
 
     async def incrementar(self, chave: str, n: int = 1) -> None:
         async with self.bloqueio_estatisticas:
@@ -304,6 +335,15 @@ async def _processar_api_paralela(
         return []
 
     total = min(int(pag.total_paginas), paginas_max)
+    paginas = list(range(1, total + 1))
+    if pag.pagina_atual == 1 and pag.fonte and "xhr" in pag.fonte.lower():
+        paginas = [k for k in paginas if k != 1]
+
+    if paginas:
+        async with estado.bloqueio_estatisticas:
+            estado.paginas_paginacao_descobertas += len(paginas)
+        await estado.emitir_progresso(retrochamadas)
+
     semaforo = asyncio.Semaphore(concorrencia)
     urls_detalhe: list[str] = []
     bloqueio_detalhe = asyncio.Lock()
@@ -311,71 +351,65 @@ async def _processar_api_paralela(
     metodo = (pag.api_metodo or "GET").upper()
 
     async def _uma_pagina(k: int) -> None:
-        url_api = pag.api_modelo.replace("{N}", str(k))
         try:
-            async with semaforo:
-                if metodo == "GET":
-                    r = await cliente.get(url_api, headers=pag.api_cabecalhos or None)
-                else:
-                    r = await cliente.request(
-                        metodo, url_api, json=pag.api_corpo,
-                        headers=pag.api_cabecalhos or None,
-                    )
-        except httpx.HTTPError as e:
-            registo.warning(f"[API] {url_api}: {e}")
-            await estado.incrementar("paginas_erro")
-            return
-        if r.status_code >= 400:
-            await estado.incrementar("paginas_erro")
-            return
-        try:
-            dados = r.json()
-        except Exception:
-            return
-
-        urls_imgs = percorrer_imagens(dados)
-        brutas = [{"src": u, "alt": ""} for u in urls_imgs]
-        await _processar_imagens_encontradas(
-            estado,
-            url_pagina=construir_url_paginada(url_origem_pagina, k, pag.parametro_pagina),
-            titulo=titulo_origem,
-            brutas=brutas, extras_og=[], extras_dados_next=[],
-            max_total=max_total, max_por_pagina=max_por_pagina,
-            retrochamadas=retrochamadas,
-        )
-
-        if pag.chave_lista_api:
-            itens = dados
-            for chave in pag.chave_lista_api.split("."):
-                if isinstance(itens, dict):
-                    itens = itens.get(chave)
-                else:
-                    itens = None
-                    break
-            if isinstance(itens, list):
-                for item in itens:
-                    if not isinstance(item, dict):
-                        continue
-                    for v in item.values():
-                        if isinstance(v, str) and v.startswith(("/", "http")):
-                            completa = urljoin(url_origem_pagina, v)
-                            p = urlparse(completa)
-                            if p.scheme in ("http", "https"):
-                                async with bloqueio_detalhe:
-                                    urls_detalhe.append(normalizar_url(completa))
-
-        await estado.incrementar("paginas_paginacao")
-        if retrochamadas.get("ao_processar_pagina"):
+            url_api = pag.api_modelo.replace("{N}", str(k))
             try:
-                retrochamadas["ao_processar_pagina"](
-                    len(estado.paginas_visitadas) + estado.estatisticas.get("paginas_paginacao", 0)
-                )
+                async with semaforo:
+                    if metodo == "GET":
+                        r = await cliente.get(url_api, headers=pag.api_cabecalhos or None)
+                    else:
+                        r = await cliente.request(
+                            metodo, url_api, json=pag.api_corpo,
+                            headers=pag.api_cabecalhos or None,
+                        )
+            except httpx.HTTPError as e:
+                registo.warning(f"[API] {url_api}: {e}")
+                await estado.incrementar("paginas_erro")
+                return
+            if r.status_code >= 400:
+                await estado.incrementar("paginas_erro")
+                return
+            try:
+                dados = r.json()
             except Exception:
-                pass
+                return
 
-    paginas = list(range(1, total + 1))
-    if pag.pagina_atual == 1 and pag.fonte and "xhr" in pag.fonte.lower():
-        paginas = [k for k in paginas if k != 1]
+            urls_imgs = percorrer_imagens(dados)
+            brutas = [{"src": u, "alt": ""} for u in urls_imgs]
+            await _processar_imagens_encontradas(
+                estado,
+                url_pagina=construir_url_paginada(url_origem_pagina, k, pag.parametro_pagina),
+                titulo=titulo_origem,
+                brutas=brutas, extras_og=[], extras_dados_next=[],
+                max_total=max_total, max_por_pagina=max_por_pagina,
+                retrochamadas=retrochamadas,
+            )
+
+            if pag.chave_lista_api:
+                itens = dados
+                for chave in pag.chave_lista_api.split("."):
+                    if isinstance(itens, dict):
+                        itens = itens.get(chave)
+                    else:
+                        itens = None
+                        break
+                if isinstance(itens, list):
+                    for item in itens:
+                        if not isinstance(item, dict):
+                            continue
+                        for v in item.values():
+                            if isinstance(v, str) and v.startswith(("/", "http")):
+                                completa = urljoin(url_origem_pagina, v)
+                                p = urlparse(completa)
+                                if p.scheme in ("http", "https"):
+                                    async with bloqueio_detalhe:
+                                        urls_detalhe.append(normalizar_url(completa))
+
+            await estado.incrementar("paginas_paginacao")
+        finally:
+            async with estado.bloqueio_estatisticas:
+                estado.paginas_paginacao_concluidas += 1
+            await estado.emitir_progresso(retrochamadas)
 
     await asyncio.gather(*(_uma_pagina(k) for k in paginas))
     return urls_detalhe
@@ -402,37 +436,38 @@ async def _processar_estatico_paralelo(
     if not urls:
         return []
 
+    async with estado.bloqueio_estatisticas:
+        estado.paginas_paginacao_descobertas += len(urls)
+    await estado.emitir_progresso(retrochamadas)
+
     semaforo = asyncio.Semaphore(concorrencia)
     detalhes: list[str] = []
     bloqueio_detalhe = asyncio.Lock()
     host_alvo = normalizar_host(urlparse(url_base).netloc)
 
     async def _uma_pagina(url: str) -> None:
-        async with semaforo:
-            html, nd, _ct, _ = await _obter_estatico(cliente, url)
-        if html is None:
-            await estado.incrementar("paginas_erro")
-            return
-        await _processar_pagina_estatica(
-            estado, url=url, html=html, dados_next=nd,
-            titulo_pagina=titulo_pagina,
-            max_total=max_total, max_por_pagina=max_por_pagina,
-            retrochamadas=retrochamadas,
-        )
-        await estado.incrementar("paginas_paginacao")
+        try:
+            async with semaforo:
+                html, nd, _ct, _ = await _obter_estatico(cliente, url)
+            if html is None:
+                await estado.incrementar("paginas_erro")
+                return
+            await _processar_pagina_estatica(
+                estado, url=url, html=html, dados_next=nd,
+                titulo_pagina=titulo_pagina,
+                max_total=max_total, max_por_pagina=max_por_pagina,
+                retrochamadas=retrochamadas,
+            )
+            await estado.incrementar("paginas_paginacao")
 
-        for link in extrair_links(html, url, ignorar_nav_footer=ignorar_nav_footer):
-            if normalizar_host(urlparse(link).netloc) == host_alvo:
-                async with bloqueio_detalhe:
-                    detalhes.append(normalizar_url(link))
-
-        if retrochamadas.get("ao_processar_pagina"):
-            try:
-                retrochamadas["ao_processar_pagina"](
-                    len(estado.paginas_visitadas) + estado.estatisticas.get("paginas_paginacao", 0)
-                )
-            except Exception:
-                pass
+            for link in extrair_links(html, url, ignorar_nav_footer=ignorar_nav_footer):
+                if normalizar_host(urlparse(link).netloc) == host_alvo:
+                    async with bloqueio_detalhe:
+                        detalhes.append(normalizar_url(link))
+        finally:
+            async with estado.bloqueio_estatisticas:
+                estado.paginas_paginacao_concluidas += 1
+            await estado.emitir_progresso(retrochamadas)
 
     await asyncio.gather(*(_uma_pagina(u) for u in urls))
     return detalhes
@@ -461,47 +496,48 @@ async def _processar_browser_paralelo(
     if not urls:
         return []
 
+    async with estado.bloqueio_estatisticas:
+        estado.paginas_paginacao_descobertas += len(urls)
+    await estado.emitir_progresso(retrochamadas)
+
     detalhes: list[str] = []
     bloqueio_detalhe = asyncio.Lock()
     host_alvo = normalizar_host(urlparse(url_base).netloc)
 
     async def _uma_pagina(url: str) -> None:
         try:
-            dados = await renderizar_e_extrair(
-                url, gestor, tempo_limite_ms=tempo_limite_ms, capturar_api=False,
-                ignorar_nav_footer=ignorar_nav_footer, modo_rapido=True,
-            )
-        except Exception as e:
-            registo.warning(f"[BrowserParalelo] {url}: {e}")
-            await estado.incrementar("paginas_erro")
-            return
-
-        brutas = dados.get("imagens") or []
-        await _processar_imagens_encontradas(
-            estado,
-            url_pagina=url, titulo=dados.get("titulo", "") or "",
-            brutas=brutas, extras_og=[], extras_dados_next=[],
-            max_total=max_total, max_por_pagina=max_por_pagina,
-            retrochamadas=retrochamadas,
-        )
-        await estado.incrementar("paginas_paginacao")
-
-        links_encontrados = set(extrair_links(dados.get("html") or "", url, ignorar_nav_footer=ignorar_nav_footer))
-        for l_js in (dados.get("links") or []):
-            links_encontrados.add(l_js)
-
-        for link in links_encontrados:
-            if normalizar_host(urlparse(link).netloc) == host_alvo:
-                async with bloqueio_detalhe:
-                    detalhes.append(normalizar_url(link))
-
-        if retrochamadas.get("ao_processar_pagina"):
             try:
-                retrochamadas["ao_processar_pagina"](
-                    len(estado.paginas_visitadas) + estado.estatisticas.get("paginas_paginacao", 0)
+                dados = await renderizar_e_extrair(
+                    url, gestor, tempo_limite_ms=tempo_limite_ms, capturar_api=False,
+                    ignorar_nav_footer=ignorar_nav_footer, modo_rapido=True,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                registo.warning(f"[BrowserParalelo] {url}: {e}")
+                await estado.incrementar("paginas_erro")
+                return
+
+            brutas = dados.get("imagens") or []
+            await _processar_imagens_encontradas(
+                estado,
+                url_pagina=url, titulo=dados.get("titulo", "") or "",
+                brutas=brutas, extras_og=[], extras_dados_next=[],
+                max_total=max_total, max_por_pagina=max_por_pagina,
+                retrochamadas=retrochamadas,
+            )
+            await estado.incrementar("paginas_paginacao")
+
+            links_encontrados = set(extrair_links(dados.get("html") or "", url, ignorar_nav_footer=ignorar_nav_footer))
+            for l_js in (dados.get("links") or []):
+                links_encontrados.add(l_js)
+
+            for link in links_encontrados:
+                if normalizar_host(urlparse(link).netloc) == host_alvo:
+                    async with bloqueio_detalhe:
+                        detalhes.append(normalizar_url(link))
+        finally:
+            async with estado.bloqueio_estatisticas:
+                estado.paginas_paginacao_concluidas += 1
+            await estado.emitir_progresso(retrochamadas)
 
     await asyncio.gather(*(_uma_pagina(u) for u in urls))
     return detalhes
@@ -532,14 +568,7 @@ async def _rastrear_detalhes(
     semaforo = asyncio.Semaphore(concorrencia)
 
     async def _emitir_descobertas() -> None:
-        if not retrochamadas.get("ao_descobrir_paginas"):
-            return
-        try:
-            async with estado.bloqueio_visitas:
-                total_unico = len(estado.paginas_visitadas) + len(estado.paginas_em_fila)
-            retrochamadas["ao_descobrir_paginas"](total_unico)
-        except Exception:
-            pass
+        await estado.emitir_progresso(retrochamadas)
 
     async def _enfileirar(url: str, profundidade: int) -> bool:
         n_url = normalizar_url(url)
@@ -578,91 +607,93 @@ async def _rastrear_detalhes(
                 estado.paginas_visitadas.add(url)
                 estado.paginas_em_fila.discard(url)
 
-            async with semaforo:
-                if retrochamadas.get("ao_visitar_url"):
+            await estado.emitir_progresso(retrochamadas)
+
+            try:
+                async with semaforo:
+                    if retrochamadas.get("ao_visitar_url"):
+                        try:
+                            retrochamadas["ao_visitar_url"](url)
+                        except Exception:
+                            pass
+                    t0 = time.monotonic()
                     try:
-                        retrochamadas["ao_visitar_url"](url)
-                    except Exception:
-                        pass
-                t0 = time.monotonic()
-                try:
-                    if parece_imagem(url):
-                        resolvida = normalizar_url(url)
-                        await estado.adicionar_imagem(
-                            url_pagina="", titulo="", url_origem=resolvida,
-                            url_contentor=resolvida, bruta={"src": resolvida, "alt": "Link direto"},
-                        )
-                        await estado.incrementar("imagens_incluidas")
-                    else:
-                        html, nd, _ct, final_url = await _obter_estatico(cliente, url)
-                        
-                        tentar_browser = (not html) or (gestor_browser is not None)
-                        
-                        if html:
-                            # Processamento estático inicial (pre-flight)
-                            await _processar_pagina_estatica(
-                                estado, url=url, html=html, dados_next=nd,
-                                max_total=max_total, max_por_pagina=max_por_pagina,
-                                retrochamadas=retrochamadas,
+                        if parece_imagem(url):
+                            resolvida = normalizar_url(url)
+                            await estado.adicionar_imagem(
+                                url_pagina="", titulo="", url_origem=resolvida,
+                                url_contentor=resolvida, bruta={"src": resolvida, "alt": "Link direto"},
                             )
-                        
-                        # Sempre tenta o browser para detalhe em sites Next.js (garante conteúdo dinâmico)
-                        if gestor_browser:
-                            try:
-                                dados_b = await renderizar_e_extrair(
-                                    url, gestor_browser, tempo_limite_ms=tempo_limite_ms,
-                                    capturar_api=False, ignorar_nav_footer=ignorar_nav_footer,
-                                    modo_rapido=True, # Detalhes em lote também usam modo rápido
-                                )
-                                html_b = dados_b.get("html")
-                                if html_b:
-                                    html = html_b
-                                    brutas = dados_b.get("imagens") or []
-                                    registo.info(f"[Detalhe] {url} | Imagens dinâmicas: {len(brutas)}")
-                                    await _processar_imagens_encontradas(
-                                        estado,
-                                        url_pagina=url, titulo=dados_b.get("titulo", "") or "",
-                                        brutas=brutas, extras_og=[], extras_dados_next=[],
-                                        max_total=max_total, max_por_pagina=max_por_pagina,
-                                        retrochamadas=retrochamadas,
-                                    )
-                            except Exception as e:
-                                registo.warning(f"[DetalheBrowser] {url}: {e}")
-                                if not html:
-                                    await estado.incrementar("paginas_erro")
-
-                        if html and (profundidade_ilimitada or profundidade < max_profundidade):
-                            links_encontrados = set(extrair_links(html, url, ignorar_nav_footer=ignorar_nav_footer))
+                            await estado.incrementar("imagens_incluidas")
+                        else:
+                            html, nd, _ct, final_url = await _obter_estatico(cliente, url)
                             
-                            if "dados_b" in locals() and dados_b.get("links"):
-                                for l_js in dados_b["links"]:
-                                    links_encontrados.add(l_js)
-                                    
-                            for link in links_encontrados:
-                                n_link = normalizar_url(link)
-                                await _enfileirar(n_link, profundidade + 1)
-                except Exception as e:
-                    registo.warning(f"[Detalhe] Erro em {url}: {e}")
-                    await estado.incrementar("paginas_erro")
+                            tentar_browser = (not html) or (gestor_browser is not None)
+                            
+                            if html:
+                                # Processamento estático inicial (pre-flight)
+                                await _processar_pagina_estatica(
+                                    estado, url=url, html=html, dados_next=nd,
+                                    max_total=max_total, max_por_pagina=max_por_pagina,
+                                    retrochamadas=retrochamadas,
+                                )
+                            
+                            # Sempre tenta o browser para detalhe em sites Next.js (garante conteúdo dinâmico)
+                            if gestor_browser:
+                                try:
+                                    dados_b = await renderizar_e_extrair(
+                                        url, gestor_browser, tempo_limite_ms=tempo_limite_ms,
+                                        capturar_api=False, ignorar_nav_footer=ignorar_nav_footer,
+                                        modo_rapido=True, # Detalhes em lote também usam modo rápido
+                                    )
+                                    html_b = dados_b.get("html")
+                                    if html_b:
+                                        html = html_b
+                                        brutas = dados_b.get("imagens") or []
+                                        registo.info(f"[Detalhe] {url} | Imagens dinâmicas: {len(brutas)}")
+                                        await _processar_imagens_encontradas(
+                                            estado,
+                                            url_pagina=url, titulo=dados_b.get("titulo", "") or "",
+                                            brutas=brutas, extras_og=[], extras_dados_next=[],
+                                            max_total=max_total, max_por_pagina=max_por_pagina,
+                                            retrochamadas=retrochamadas,
+                                        )
+                                except Exception as e:
+                                    registo.warning(f"[DetalheBrowser] {url}: {e}")
+                                    if not html:
+                                        await estado.incrementar("paginas_erro")
 
-                if retrochamadas.get("ao_processar_pagina"):
+                            if html and (profundidade_ilimitada or profundidade < max_profundidade):
+                                links_encontrados = set(extrair_links(html, url, ignorar_nav_footer=ignorar_nav_footer))
+                                
+                                if "dados_b" in locals() and dados_b.get("links"):
+                                    for l_js in dados_b["links"]:
+                                        links_encontrados.add(l_js)
+                                        
+                                for link in links_encontrados:
+                                    n_link = normalizar_url(link)
+                                    await _enfileirar(n_link, profundidade + 1)
+                    except Exception as e:
+                        registo.warning(f"[Detalhe] Erro em {url}: {e}")
+                        await estado.incrementar("paginas_erro")
+
                     try:
-                        retrochamadas["ao_processar_pagina"](len(estado.paginas_visitadas))
+                        if estado.caminho_persistencia and len(estado.paginas_visitadas) % 50 == 0:
+                            await estado.persistir_estado_paginas()
                     except Exception:
                         pass
-                try:
-                    if estado.caminho_persistencia and len(estado.paginas_visitadas) % 50 == 0:
-                        await estado.persistir_estado_paginas()
-                except Exception:
-                    pass
-            
-            # Log de conclusão do detalhe
-            adicionadas_nesta_pag = 0 # (seria bom ter esse tracking por pagina, mas estado.imagens_incluidas é global)
-            registo.info(
-                f"[Detalhe] {url} ({time.monotonic() - t0:.2f}s) "
-                f"vis={len(estado.paginas_visitadas)} fila={fila.qsize()}"
-            )
-            fila.task_done()
+                
+                # Log de conclusão do detalhe
+                adicionadas_nesta_pag = 0 # (seria bom ter esse tracking por pagina, mas estado.imagens_incluidas é global)
+                registo.info(
+                    f"[Detalhe] {url} ({time.monotonic() - t0:.2f}s) "
+                    f"vis={len(estado.paginas_visitadas)} fila={fila.qsize()}"
+                )
+            finally:
+                async with estado.bloqueio_visitas:
+                    estado.paginas_concluidas.add(url)
+                await estado.emitir_progresso(retrochamadas)
+                fila.task_done()
 
     trabalhadores = [asyncio.create_task(_trabalhador())
                      for _ in range(max(1, concorrencia))]
@@ -745,122 +776,122 @@ async def rastrear_site(
                 return []
             estado.paginas_visitadas.add(n_url)
 
+        await estado.emitir_progresso(retrochamadas)
         if retrochamadas.get("ao_visitar_url"):
             try:
                 retrochamadas["ao_visitar_url"](url_inicial)
             except Exception:
                 pass
-        
-        if retrochamadas.get("ao_descobrir_paginas"):
-            try:
-                retrochamadas["ao_descobrir_paginas"](len(estado.paginas_visitadas))
-            except Exception:
-                pass
 
-        html, nd, ct, _final_url = await _obter_estatico(cliente, url_inicial)
-        titulo_inicial = ""
-        adicionadas_estatico = 0
-        if html and ct and "html" in ct.lower():
-            adicionadas_estatico = await _processar_pagina_estatica(
-                estado, url=url_inicial, html=html, dados_next=nd,
-                max_total=max_total, max_por_pagina=max_por_pagina,
-                retrochamadas=retrochamadas,
+        try:
+            html, nd, ct, _final_url = await _obter_estatico(cliente, url_inicial)
+            titulo_inicial = ""
+            adicionadas_estatico = 0
+            if html and ct and "html" in ct.lower():
+                adicionadas_estatico = await _processar_pagina_estatica(
+                    estado, url=url_inicial, html=html, dados_next=nd,
+                    max_total=max_total, max_por_pagina=max_por_pagina,
+                    retrochamadas=retrochamadas,
+                )
+
+            pag = detetar_paginacao(url=url_inicial, html=html, dados_next=nd) if seguir_paginacao else Paginacao()
+
+            tem_pag_completa_estatica = (
+                pag.e_listagem_paginada
+                and pag.total_paginas
+                and pag.total_paginas > 1
             )
+            conteudo_escasso = (not nd) and (adicionadas_estatico <= 1)
 
-        pag = detetar_paginacao(url=url_inicial, html=html, dados_next=nd) if seguir_paginacao else Paginacao()
+            precisa_browser = True
 
-        tem_pag_completa_estatica = (
-            pag.e_listagem_paginada
-            and pag.total_paginas
-            and pag.total_paginas > 1
-        )
-        conteudo_escasso = (not nd) and (adicionadas_estatico <= 1)
+            dados_browser: dict[str, Any] | None = None
+            if precisa_browser:
+                try:
+                    dados_browser = await renderizar_e_extrair(
+                        url_inicial, gestor_browser, tempo_limite_ms=tempo_limite_ms,
+                        capturar_api=True, ignorar_nav_footer=ignorar_nav_footer,
+                    )
+                    titulo_inicial = dados_browser.get("titulo", "") or ""
+                    brutas_b = dados_browser.get("imagens") or []
+                    registo.info(f"[Pre-flight] {url_inicial} | Imagens: {len(brutas_b)}")
+                    await _processar_imagens_encontradas(
+                        estado, url_pagina=url_inicial, titulo=titulo_inicial,
+                        brutas=brutas_b, extras_og=[], extras_dados_next=[],
+                        max_total=max_total, max_por_pagina=max_por_pagina,
+                        retrochamadas=retrochamadas,
+                    )
+                    pag = detetar_paginacao(
+                        url=url_inicial, html=dados_browser.get("html") or html,
+                        dados_next=nd, informacao_dom=dados_browser.get("dom_paginacao"),
+                        registo_pedidos=dados_browser.get("registo_pedidos"),
+                    )
+                except Exception as e:
+                    registo.warning(f"[Pre-flight browser] {url_inicial}: {e}")
+                    await estado.incrementar("paginas_erro")
 
-        precisa_browser = True
+            registo.info(
+                f"[Paginacao] {url_inicial} | e_listagem={pag.e_listagem_paginada} "
+                f"total={pag.total_paginas} fonte={pag.fonte} "
+                f"api={'sim' if pag.api_modelo else 'nao'}"
+            )
+            if retrochamadas.get("ao_detectar_paginacao") and pag.total_paginas:
+                try:
+                    retrochamadas["ao_detectar_paginacao"](int(pag.total_paginas))
+                except Exception:
+                    pass
 
-        dados_browser: dict[str, Any] | None = None
-        if precisa_browser:
-            try:
-                dados_browser = await renderizar_e_extrair(
-                    url_inicial, gestor_browser, tempo_limite_ms=tempo_limite_ms,
-                    capturar_api=True, ignorar_nav_footer=ignorar_nav_footer,
-                )
-                titulo_inicial = dados_browser.get("titulo", "") or ""
-                brutas_b = dados_browser.get("imagens") or []
-                registo.info(f"[Pre-flight] {url_inicial} | Imagens: {len(brutas_b)}")
-                await _processar_imagens_encontradas(
-                    estado, url_pagina=url_inicial, titulo=titulo_inicial,
-                    brutas=brutas_b, extras_og=[], extras_dados_next=[],
-                    max_total=max_total, max_por_pagina=max_por_pagina,
-                    retrochamadas=retrochamadas,
-                )
-                pag = detetar_paginacao(
-                    url=url_inicial, html=dados_browser.get("html") or html,
-                    dados_next=nd, informacao_dom=dados_browser.get("dom_paginacao"),
-                    registo_pedidos=dados_browser.get("registo_pedidos"),
-                )
-            except Exception as e:
-                registo.warning(f"[Pre-flight browser] {url_inicial}: {e}")
-                await estado.incrementar("paginas_erro")
+            sementes_detalhe: list[str] = []
+            paginas_max_uso = max_paginas if max_paginas > 0 else 9999
 
-        registo.info(
-            f"[Paginacao] {url_inicial} | e_listagem={pag.e_listagem_paginada} "
-            f"total={pag.total_paginas} fonte={pag.fonte} "
-            f"api={'sim' if pag.api_modelo else 'nao'}"
-        )
-        if retrochamadas.get("ao_detectar_paginacao") and pag.total_paginas:
-            try:
-                retrochamadas["ao_detectar_paginacao"](int(pag.total_paginas))
-            except Exception:
-                pass
-
-        sementes_detalhe: list[str] = []
-        paginas_max_uso = max_paginas if max_paginas > 0 else 9999
-
-        if seguir_paginacao and pag.e_listagem_paginada and pag.total_paginas and pag.total_paginas > 1:
-            if pag.api_modelo:
-                sementes_detalhe.extend(await _processar_api_paralela(
-                    cliente, pag=pag, estado=estado,
-                    url_origem_pagina=url_inicial, titulo_origem=titulo_inicial,
-                    max_total=max_total, max_por_pagina=max_por_pagina,
-                    paginas_max=paginas_max_uso, concorrencia=concorrencia,
-                    retrochamadas=retrochamadas,
-                ))
-            else:
-                via_estatica = (not dados_browser and bool(html) and (bool(nd) or adicionadas_estatico > 1))
-                if via_estatica:
-                    sementes_detalhe.extend(await _processar_estatico_paralelo(
-                        cliente, pag=pag, url_base=url_inicial, titulo_pagina=titulo_inicial,
-                        estado=estado, max_total=max_total, max_por_pagina=max_por_pagina,
+            if seguir_paginacao and pag.e_listagem_paginada and pag.total_paginas and pag.total_paginas > 1:
+                if pag.api_modelo:
+                    sementes_detalhe.extend(await _processar_api_paralela(
+                        cliente, pag=pag, estado=estado,
+                        url_origem_pagina=url_inicial, titulo_origem=titulo_inicial,
+                        max_total=max_total, max_por_pagina=max_por_pagina,
                         paginas_max=paginas_max_uso, concorrencia=concorrencia,
-                        retrochamadas=retrochamadas, ignorar_nav_footer=ignorar_nav_footer,
+                        retrochamadas=retrochamadas,
                     ))
                 else:
-                    sementes_detalhe.extend(await _processar_browser_paralelo(
-                        gestor_browser, pag=pag, url_base=url_inicial,
-                        estado=estado, max_total=max_total, max_por_pagina=max_por_pagina,
-                        paginas_max=paginas_max_uso,
-                        tempo_limite_ms=tempo_limite_ms,
-                        retrochamadas=retrochamadas,
-                        ignorar_nav_footer=ignorar_nav_footer,
-                    ))
+                    via_estatica = (not dados_browser and bool(html) and (bool(nd) or adicionadas_estatico > 1))
+                    if via_estatica:
+                        sementes_detalhe.extend(await _processar_estatico_paralelo(
+                            cliente, pag=pag, url_base=url_inicial, titulo_pagina=titulo_inicial,
+                            estado=estado, max_total=max_total, max_por_pagina=max_por_pagina,
+                            paginas_max=paginas_max_uso, concorrencia=concorrencia,
+                            retrochamadas=retrochamadas, ignorar_nav_footer=ignorar_nav_footer,
+                        ))
+                    else:
+                        sementes_detalhe.extend(await _processar_browser_paralelo(
+                            gestor_browser, pag=pag, url_base=url_inicial,
+                            estado=estado, max_total=max_total, max_por_pagina=max_por_pagina,
+                            paginas_max=paginas_max_uso,
+                            tempo_limite_ms=tempo_limite_ms,
+                            retrochamadas=retrochamadas,
+                            ignorar_nav_footer=ignorar_nav_footer,
+                        ))
 
-        if not dados_browser:
-            registo.warning(f"[Crawler] Falha ao obter dados do browser para {url_inicial}")
-            return []
+            if not dados_browser:
+                registo.warning(f"[Crawler] Falha ao obter dados do browser para {url_inicial}")
+                return []
+                
+            html = dados_browser.get("html") or ""
+            links_iniciais = set(extrair_links(html, url_inicial, ignorar_nav_footer=ignorar_nav_footer))
+            if dados_browser and dados_browser.get("links"):
+                for l_js in dados_browser["links"]:
+                    links_iniciais.add(l_js)
             
-        html = dados_browser.get("html") or ""
-        links_iniciais = set(extrair_links(html, url_inicial, ignorar_nav_footer=ignorar_nav_footer))
-        if dados_browser and dados_browser.get("links"):
-            for l_js in dados_browser["links"]:
-                links_iniciais.add(l_js)
-        
-        for l in links_iniciais:
-            h = normalizar_host(urlparse(l).netloc)
-            if h in hosts_alvo:
-                sementes_detalhe.append(normalizar_url(l))
+            for l in links_iniciais:
+                h = normalizar_host(urlparse(l).netloc)
+                if h in hosts_alvo:
+                    sementes_detalhe.append(normalizar_url(l))
 
-        return sementes_detalhe
+            return sementes_detalhe
+        finally:
+            async with estado.bloqueio_visitas:
+                estado.paginas_concluidas.add(n_url)
+            await estado.emitir_progresso(retrochamadas)
 
     ignorar_nav_footer = e_multi
 
