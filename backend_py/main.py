@@ -85,6 +85,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from auth import verificar_api_key
+
+@app.middleware("http")
+async def middleware_verificar_api_key(request: Request, call_next):
+    # Ignorar requisições pre-flight CORS (OPTIONS) e rotas fora de /api (como /saude)
+    if request.method == "OPTIONS" or not request.url.path.startswith("/api/"):
+        return await call_next(request)
+    
+    try:
+        await verificar_api_key(request, request.query_params.get("api_key"))
+    except HTTPException as e:
+        return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
+        
+    return await call_next(request)
+
 
 # ── Modelos de Dados (Pydantic) ────────────────────────────────────────────────
 

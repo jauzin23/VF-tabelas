@@ -49,7 +49,6 @@ python_logging.getLogger("transformers.modeling_utils").setLevel(python_logging.
 
 _modelos_carregados = False
 _ultimo_uso_modelo = 0.0
-_UNLOAD_TIMEOUT = env_int("UNLOAD_MODELS_AFTER_S", 0)
 
 processador_detecao = None
 modelo_detecao = None

@@ -76,6 +76,24 @@ def env_bool(chave: str, padrao: bool) -> bool:
     return v.lower() in ("true", "1", "yes", "sim")
 
 
+# ── Segurança (API Keys) ─────────────────────────────────────────────────────
+
+def carregar_api_keys() -> list[str]:
+    """Carrega e valida as chaves de API a partir da variável de ambiente API_KEYS.
+    Se a variável estiver ausente ou vazia, encerra a aplicação com erro crítico."""
+    garantir_ambiente_carregado()
+    chaves_raw = os.getenv("API_KEYS", "")
+    chaves = [c.strip() for c in chaves_raw.split(",") if c.strip()]
+    if not chaves:
+        registo.critical(
+            "ERRO FATAL DE SEGURANÇA: A variável de ambiente API_KEYS não está definida ou está vazia. "
+            "A API Key é estritamente obrigatória para proteger os endpoints do sistema. "
+            "Defina API_KEYS no docker-compose.yml ou no ambiente e tente novamente."
+        )
+        sys.exit(1)
+    return chaves
+
+
 # ── Configuração do Sistema de Filas ─────────────────────────────────────────
 
 def carregar_config_fila() -> dict:
@@ -87,14 +105,5 @@ def carregar_config_fila() -> dict:
         "max_concurrent_tasks":   env_int("MAX_CONCURRENT_TASKS", 1),
         # Limpeza de memória
         "cleanup_after_s":        env_int("CLEANUP_RESULTS_AFTER_S", 300),
-        "max_results_memory":     env_int("MAX_RESULTS_IN_MEMORY", 500),
         "results_flush_interval": env_int("RESULTS_FLUSH_INTERVAL", 100),
-        # Modelos IA
-        "preload_models":         env_bool("PRELOAD_MODELS", False),
-        "unload_models_after_s":  env_int("UNLOAD_MODELS_AFTER_S", 0),
-        # Browser
-        "browser_single_process": env_bool("BROWSER_SINGLE_PROCESS", True),
-        "browser_max_tabs":       env_int("BROWSER_MAX_TABS", 2),
-        "browser_idle_timeout_s": env_int("BROWSER_IDLE_TIMEOUT_S", 30),
-        "browser_args_extra":     os.getenv("BROWSER_ARGS_EXTRA", ""),
     }

@@ -72,7 +72,7 @@ Quando a página exige renderização completa ou interação, entra em ação o
 - **Estabilização de DOM Avançada**: Aguarda não apenas por eventos padrão (`domcontentloaded`), mas monitoriza ativamente a contagem de elementos `<img>` e `<a>` no DOM. O crawler só avança quando o número de elementos estabiliza em 6 amostras consecutivas (com intervalos de 400ms).
 - **Scroll Incremental Completo**: Simula um utilizador real a fazer scroll suave até ao final da página (em passos calculados de 80% da altura do ecrã) para forçar o carregamento de todas as imagens em *lazy-load*.
 - **Expansão de Menus e Acordeões**: Procura ativamente por botões de navegação, menus de hambúrguer, setas de expansão (`[aria-expanded='false']`, `.ant-menu-submenu-title`) e clica neles para revelar links profundos ocultos na UI.
-- **Semáforo Global de Abas (`BROWSER_MAX_TABS`)**: Limita estritamente quantas abas do Chromium podem estar abertas em paralelo, prevenindo que um site com dezenas de páginas de paginação trave a máquina por excesso de instâncias.
+- **Semáforo Global de Abas (`BROWSER_CONCURRENCY`)**: Limita estritamente quantas abas do Chromium podem estar abertas em paralelo, prevenindo que um site com dezenas de páginas de paginação trave a máquina por excesso de instâncias.
 - **Modo "Fast-Render"**: Em páginas subsequentes de listagem ou detalhe, onde o layout já é conhecido, o sistema aplica esperas encurtadas, aumentando a velocidade geral do rastreio em mais de 60%.
 
 ```
@@ -238,6 +238,30 @@ O painel de controlo (*dashboard*) estará imediatamente acessível no browser e
 
 O ficheiro `docker-compose.yml` centraliza o controlo total sobre o comportamento do motor de crawling, os limites do browser, os parâmetros de IA e o sistema de filas. Abaixo encontra-se a explicação exaustiva de todas as chaves configuráveis no serviço `backend`:
 
+### Segurança e Autenticação (API Keys)
+O acesso a todos os endpoints protegidos (`/api/*`) exige estritamente a apresentação de uma chave de API válida. A validação de segurança ocorre no arranque: se a variável `API_KEYS` estiver ausente ou vazia, o backend aborta a inicialização com erro crítico (`sys.exit(1)`).
+| Variável | Padrão | Descrição |
+| :--- | :--- | :--- |
+| `API_KEYS` | (Obrigatório) | Lista de chaves válidas autorizadas, separadas por vírgula (ex: `chave1,chave2`). |
+
+#### Como Gerar Chaves Seguras
+Para criar chaves de API criptograficamente fortes e impenetráveis, pode utilizar qualquer um dos seguintes métodos:
+1. **Via Terminal (OpenSSL)**:
+   ```bash
+   openssl rand -hex 32
+   ```
+2. **Via Python (Módulo Nativo `secrets`)**:
+   ```bash
+   python -c "import secrets; print('sk_vf_' + secrets.token_hex(28))"
+   ```
+3. **Via Websites de Geradores Seguros**:
+   Pode gerar chaves aleatórias em portais fidedignos como o [Bitwarden Password Generator](https://bitwarden.com/password-generator/), [1Password Generator](https://1password.com/password-generator/) ou [Random.org](https://www.random.org/strings/). Recomendamos gerar strings alfanuméricas ou hexadecimais longas (entre 32 a 64 caracteres).
+
+#### Como Enviar a Chave nas Requisições
+- **Múltiplas Chaves e Isolamento**: A variável `API_KEYS` do backend aceita uma lista de chaves separadas por vírgula (ex: `chave_front,chave_cli`). Para manter o isolamento de segurança, defina uma chave exclusivamente para o frontend (`NEXT_PUBLIC_API_KEY`) e outra chave privada para os seus scripts externos.
+- **Clientes Externos / CLI / Postman**: Envie a sua chave privada no cabeçalho `X-API-Key: <sua_chave>` ou `Authorization: Bearer <sua_chave>`.
+- **Frontend Next.js**: O Next.js encarrega-se automaticamente de passar a sua respectiva chave configurada no cabeçalho e na query string (`?api_key=`) nos canais SSE.
+
 ### Configurações de Servidor e Valores por Omissão de Rastreio
 | Variável | Padrão | Descrição |
 | :--- | :--- | :--- |
@@ -272,17 +296,12 @@ O ficheiro `docker-compose.yml` centraliza o controlo total sobre o comportament
 | `MAX_CONCURRENT_TASKS`| `1` | Número máximo de tarefas pesadas inteiras a executar em simultâneo. (1 = serialização estrita para 1GB RAM). |
 | `MAX_QUEUE_SIZE` | `0` | Limite máximo de tarefas em espera na fila global (0 = ilimitado). |
 | `CLEANUP_RESULTS_AFTER_S`| `300` | Tempo em segundos após a conclusão de uma tarefa para purgar os resultados pesados da RAM (mantém metadados). |
-| `MAX_RESULTS_IN_MEMORY`| `500` | Limite de resultados guardados em memória antes de ativar descarregamentos agressivos para disco. |
 | `RESULTS_FLUSH_INTERVAL`| `100` | Frequência (em número de novos itens encontrados) com que o sistema escreve resultados parciais para o disco. |
-| `PRELOAD_MODELS` | `false` | Se `true`, carrega a IA na RAM no arranque do servidor. Se `false`, carrega apenas no primeiro uso (*lazy load*). |
-| `UNLOAD_MODELS_AFTER_S`| `0` | Descarrega os modelos da RAM após N segundos ociosos sem inferências visuais (0 = desativado via timer; o gestor ativo gere por estado). |
 
 ### Otimizações do Motor de Browser (Chromium)
 | Variável | Padrão | Descrição |
 | :--- | :--- | :--- |
 | `BROWSER_SINGLE_PROCESS`| `false` | Se `true`, executa o Chromium com `--single-process` (poupa ~50MB RAM, mas causa instabilidade no Windows). |
-| `BROWSER_MAX_TABS` | `2` | Configuração redundante de segurança para o teto máximo de abas do browser. |
-| `BROWSER_IDLE_TIMEOUT_S`| `30` | Segundos ociosos entre tarefas após os quais o processo do Chromium é inteiramente terminado para poupar recursos. |
 | `BROWSER_ARGS_EXTRA` | `` | Argumentos adicionais avançados de linha de comandos a passar ao binário do Chromium (separados por vírgula). |
 
 ### Frontend (Configurado em `docker-compose.yml`)

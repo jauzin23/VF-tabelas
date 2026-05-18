@@ -4,7 +4,6 @@ services:
       context: ./backend_py
     restart: unless-stopped
     ports:
-      # Exposição local da porta do backend
       - "4000:4000"
     deploy:
       resources:
@@ -13,14 +12,22 @@ services:
         reservations:
           memory: 512M
     environment:
-      # ── Servidor e Sistema ──────────────────────────────────────────────────
+      # =======================================================================
+      # NOTA IMPORTANTE: Para uma documentação exaustiva e detalhada sobre
+      # a função de cada uma destas variáveis de ambiente, consulta o README.md
+      # na secção "Referência Completa de Configuração".
+      # =======================================================================
+
+      # Servidor e Sistema
       BACKEND_PORT: 4000
       DATA_PATH: /data
       ALLOWED_ORIGINS: "*"
 
-      # ── Valores por Omissão de Rastreio (Usados caso o pedido não envie opções) ──
-      # No modo single-URL, o limite de páginas e profundidade pode ser especificado no JSON.
-      # No modo multi-URL, o limite de páginas é gerido automaticamente por categoria.
+      # Segurança (Chaves de API)
+      # Chaves separadas por vírgula, exemplo: fk_vf_................,sk_vf_................
+      API_KEYS: ""
+
+      # Valores de fallback (Usados caso o pedido não envie opções)
       MAX_PAGES: 50
       MAX_DEPTH: 3
       PAGE_TIMEOUT_MS: 30000
@@ -28,7 +35,7 @@ services:
       BROWSER_CONCURRENCY: 3
       JOB_TIMEOUT_S: 1200
 
-      # ── Filtros na Fonte e Limiares de IA ───────────────────────────────────
+      # Filtros e Limiares
       MIN_IMAGE_WIDTH: 120
       MIN_IMAGE_HEIGHT: 80
       MIN_IMAGE_AREA: 9600
@@ -38,21 +45,14 @@ services:
       STRUCTURE_MIN_ROWS: 2
       STRUCTURE_MIN_COLS: 2
 
-      # ── Fila Global e Gestão Ativa de Memória (1GB RAM) ─────────────────────
-      MAX_QUEUE_SIZE: 0
+      # Fila e Gestão de Memória
+      MAX_QUEUE_SIZE: 0 # 0 = sem limite
       MAX_CONCURRENT_TASKS: 1
       CLEANUP_RESULTS_AFTER_S: 300
-      MAX_RESULTS_IN_MEMORY: 500
       RESULTS_FLUSH_INTERVAL: 100
 
-      # ── Modelos de IA ───────────────────────────────────────────────────────
-      PRELOAD_MODELS: false
-      UNLOAD_MODELS_AFTER_S: 0
-
-      # ── Otimizações do Motor de Browser (Chromium) ──────────────────────────
+      # Otimizações do Motor de Browser (Chromium)
       BROWSER_SINGLE_PROCESS: false
-      BROWSER_MAX_TABS: 2
-      BROWSER_IDLE_TIMEOUT_S: 30
       BROWSER_ARGS_EXTRA: ""
     volumes:
       - app_data:/data
@@ -63,12 +63,16 @@ services:
       args:
         # URL da API do backend — vista pelo browser do utilizador final
         NEXT_PUBLIC_API_URL: http://localhost:4000
+        # Chave de API dedicada ao frontend
+        NEXT_PUBLIC_API_KEY: fk_vf_a1b2c3d4e5f60718293a4b5c6d7e8f90
     restart: unless-stopped
     ports:
       # Exposição da porta do frontend (acessível no browser via http://localhost:3001)
       - "3001:3000"
     environment:
       NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      NEXT_PUBLIC_API_KEY: fk_vf_a1b2c3d4e5f60718293a4b5c6d7e8f90
     depends_on:
       - backend
 

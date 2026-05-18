@@ -2,6 +2,7 @@ import type { Tarefa, OpcoesTarefa, InfoFila, InfoMemoria } from "./types";
 
 const DEFAULT_BASE_URL = "http://localhost:4000";
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || DEFAULT_BASE_URL;
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
 
 export function getApiBaseUrl(): string {
   return BASE_URL;
@@ -10,14 +11,20 @@ export function getApiBaseUrl(): string {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBaseUrl();
   const fullUrl = `${base}${path}`;
+  const headers: Record<string, string> = {
+    ...(init?.body && !(init.body instanceof FormData)
+      ? { "Content-Type": "application/json" }
+      : {}),
+    ...(init?.headers as Record<string, string> || {}),
+  };
+
+  if (API_KEY) {
+    headers["X-API-Key"] = API_KEY;
+  }
+
   const res = await fetch(fullUrl, {
     ...init,
-    headers: {
-      ...(init?.body && !(init.body instanceof FormData)
-        ? { "Content-Type": "application/json" }
-        : {}),
-      ...(init?.headers || {}),
-    },
+    headers,
   });
   if (!res.ok) {
     let mensagem = `Erro ${res.status}`;
@@ -76,7 +83,8 @@ export const api = {
 
   eventosTarefa: (id: string): EventSource => {
     const base = getApiBaseUrl();
-    return new EventSource(`${base}/api/tarefas/${id}/eventos`);
+    const param = API_KEY ? `?api_key=${encodeURIComponent(API_KEY)}` : "";
+    return new EventSource(`${base}/api/tarefas/${id}/eventos${param}`);
   },
 
   infoFila: () => request<InfoFila>("/api/sistema/fila"),
