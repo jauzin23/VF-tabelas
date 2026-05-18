@@ -20,11 +20,12 @@ from tarefas import (
     criar_tarefa, inicializar_tarefa, executar_tarefa, publicar_e_persistir,
     obter_tarefa, eliminar_tarefa, listar_tarefas, formatar_tarefa,
     preparar_resposta_bloqueante, obter_eventos_tarefa, manutencao_canais_loop,
-    fila_global, tarefas as tarefas_cache,
+    fila_global, tarefas as tarefas_cache, ia_em_uso_por_tarefa,
+    existem_tarefas_ativas_ou_pendentes,
 )
 from detetor import (
     detetar_tabelas_em_imagem, modelos_carregados,
-    verificar_descarga_modelos,
+    gestor_ia_ram_loop, descarregar_modelos,
 )
 
 garantir_ambiente_carregado()
@@ -54,14 +55,15 @@ async def ciclo_vida(app: FastAPI):
     
     # Iniciar tarefas de background
     tarefa_manutencao = asyncio.create_task(manutencao_canais_loop())
-    tarefa_descarga = asyncio.create_task(verificar_descarga_modelos())
+    tarefa_gestor_ram = asyncio.create_task(gestor_ia_ram_loop())
     
     yield
     
     registo.info("A encerrar serviços de background...")
     tarefa_manutencao.cancel()
-    tarefa_descarga.cancel()
+    tarefa_gestor_ram.cancel()
     await fila_global.parar()
+
 
 app = FastAPI(
     title="VF-Tabelas",
@@ -139,6 +141,7 @@ async def api_criar_tarefa(carga: CargaCriarTarefa):
         # Modo bloqueante: executar diretamente (sem fila)
         tarefa = inicializar_tarefa(carga_dict)
         await publicar_e_persistir(tarefa)
+        descarregar_modelos()
         await executar_tarefa(tarefa["id"])
         return preparar_resposta_bloqueante(tarefa)
 
@@ -225,6 +228,7 @@ async def api_paginacao_multurls(carga: CargaPaginacao):
     else:
         tarefa = inicializar_tarefa(carga_dict)
         await publicar_e_persistir(tarefa)
+        descarregar_modelos()
         await executar_tarefa(tarefa["id"])
         return preparar_resposta_bloqueante(tarefa)
 
@@ -239,6 +243,13 @@ async def api_fila():
 @app.get("/api/sistema/memoria")
 async def api_memoria():
     """Uso de memória do processo backend."""
+    dados_extra = {
+        "modelos_carregados": modelos_carregados(),
+        "ia_em_uso_por_tarefa": ia_em_uso_por_tarefa(),
+        "tarefas_ativas_ou_pendentes": existem_tarefas_ativas_ou_pendentes(),
+        "tarefas_em_memoria": len(tarefas_cache),
+        "fila": fila_global.info(),
+    }
     try:
         import psutil
         proc = psutil.Process(os.getpid())
@@ -246,16 +257,12 @@ async def api_memoria():
         return {
             "rss_mb": round(mem.rss / 1024 / 1024, 1),
             "vms_mb": round(mem.vms / 1024 / 1024, 1),
-            "fila": fila_global.info(),
-            "modelos_carregados": modelos_carregados(),
-            "tarefas_em_memoria": len(tarefas_cache),
+            **dados_extra
         }
     except ImportError:
         return {
             "erro": "psutil não instalado",
-            "fila": fila_global.info(),
-            "modelos_carregados": modelos_carregados(),
-            "tarefas_em_memoria": len(tarefas_cache),
+            **dados_extra
         }
 
 

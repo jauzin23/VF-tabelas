@@ -68,7 +68,7 @@ def _garantir_modelos():
         _ultimo_uso_modelo = time.monotonic()
         return
 
-    registo.info("A carregar modelos IA (lazy)...")
+    registo.info("A carregar modelos...")
     t0 = time.monotonic()
 
     processador_detecao = DetrImageProcessor.from_pretrained(NOME_DETETOR)
@@ -112,18 +112,30 @@ def modelos_carregados() -> bool:
     return _modelos_carregados
 
 
-async def verificar_descarga_modelos():
-    """Tarefa de background: descarrega modelos se ociosos há mais de UNLOAD_MODELS_AFTER_S."""
-    if _UNLOAD_TIMEOUT <= 0:
-        return
+async def garantir_modelos_assincrono():
+    await asyncio.to_thread(_garantir_modelos)
+
+
+async def gestor_ia_ram_loop():
+    """Tarefa de background: gere proativamente a RAM com base no estado das tarefas."""
     while True:
-        await asyncio.sleep(30)
-        if _modelos_carregados and (time.monotonic() - _ultimo_uso_modelo) > _UNLOAD_TIMEOUT:
-            descarregar_modelos()
+        await asyncio.sleep(10)
+        try:
+            from tarefas import existem_tarefas_ativas_ou_pendentes, ia_em_uso_por_tarefa
+            ativas = existem_tarefas_ativas_ou_pendentes()
+            em_uso = ia_em_uso_por_tarefa()
 
+            if ativas and not em_uso:
+                if _modelos_carregados:
+                    registo.info("[Gestor RAM] Tarefa ativa em rastreio. A descarregar IA da RAM...")
+                    descarregar_modelos()
+            elif not ativas:
+                if not _modelos_carregados:
+                    registo.info("[Gestor RAM] Servidor ocioso. A pré-carregar IA na RAM...")
+                    await garantir_modelos_assincrono()
+        except Exception as e:
+            registo.error(f"[Gestor RAM] Erro no loop de monitorização: {e}")
 
-if env_bool("PRELOAD_MODELS", False):
-    _garantir_modelos()
 
 UA_HTTP = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -654,7 +666,15 @@ def _detetar_tabelas_em_imagem_sincrono(entrada_imagem):
 
 
 async def detetar_tabelas_em_imagem(entrada_imagem):
-    return await asyncio.to_thread(_detetar_tabelas_em_imagem_sincrono, entrada_imagem)
+    resultado = await asyncio.to_thread(_detetar_tabelas_em_imagem_sincrono, entrada_imagem)
+    try:
+        from tarefas import existem_tarefas_ativas_ou_pendentes, ia_em_uso_por_tarefa
+        if existem_tarefas_ativas_ou_pendentes() and not ia_em_uso_por_tarefa():
+            registo.info("[Gestor RAM] Rastreio ativo detetado após inferência de imagem. A libertar IA...")
+            descarregar_modelos()
+    except Exception as e:
+        registo.warning(f"[Gestor RAM] Erro ao verificar estado da IA: {e}")
+    return resultado
 
 
 async def detetar_tabelas_para_tarefa(imagens, id_tarefa=None, ao_progredir=None, concorrencia_analise=None):

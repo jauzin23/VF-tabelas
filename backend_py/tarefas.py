@@ -31,6 +31,27 @@ tarefas = {}
 
 canais_eventos = {}
 
+_ia_em_uso = False
+
+
+def definir_ia_em_uso(estado: bool):
+    global _ia_em_uso
+    _ia_em_uso = estado
+
+
+def ia_em_uso_por_tarefa() -> bool:
+    return _ia_em_uso
+
+
+def existem_tarefas_ativas_ou_pendentes() -> bool:
+    if fila_global.tarefa_ativa is not None or len(fila_global.tarefas_em_espera) > 0:
+        return True
+    for t in tarefas.values():
+        if t.get("estado") in ("pendente", "na_fila", "em_execucao"):
+            return True
+    return False
+
+
 
 def _ambiente_int(chave, padrao):
     v = os.getenv(chave)
@@ -231,6 +252,8 @@ async def executar_tarefa(id_tarefa):
         }
 
         # 1. Rastreio / Extração
+        registo.info(f"Tarefa {id_tarefa}: a iniciar rastreio. A garantir descarga da IA...")
+        descarregar_modelos()
         rastreados, estatisticas = await rastrear_site(
             entrada_alvo, opcoes_exec, {
                 "ao_descobrir_paginas": lambda c: atualizar_progresso_controlado(paginas_descobertas=c),
@@ -249,16 +272,17 @@ async def executar_tarefa(id_tarefa):
 
         # 2. Análise IA
         registo.info(f"Tarefa {id_tarefa}: analise de {len(tarefa['resultados'])} imagens")
-        tarefa["resultados"] = await detetar_tabelas_para_tarefa(
-            tarefa["resultados"],
-            tarefa["id"],
-            lambda p, d: atualizar_progresso_controlado(imagens_analisadas=p, tabelas_detetadas=d),
-            concorrencia_analise=tarefa["opcoes"].get("concorrencia_analise"),
-        )
-
-        # Libertar modelos IA imediatamente — a fila é linear, o próximo passo
-        # será o rastreio de outra tarefa (Chromium), não precisa dos modelos.
-        descarregar_modelos()
+        definir_ia_em_uso(True)
+        try:
+            tarefa["resultados"] = await detetar_tabelas_para_tarefa(
+                tarefa["resultados"],
+                tarefa["id"],
+                lambda p, d: atualizar_progresso_controlado(imagens_analisadas=p, tabelas_detetadas=d),
+                concorrencia_analise=tarefa["opcoes"].get("concorrencia_analise"),
+            )
+        finally:
+            definir_ia_em_uso(False)
+            descarregar_modelos()
 
         tarefa["estado"] = "concluido"
         registo.info(f"Tarefa {id_tarefa} concluida")
@@ -444,6 +468,8 @@ fila_global = FilaGlobal()
 # ── Gestão de Ciclo de Vida ───────────────────────────────────────────────────
 
 def inicializar_tarefa(carga_util):
+    registo.info("Nova tarefa criada/inicializada. A descarregar modelos IA da RAM...")
+    descarregar_modelos()
     id_tarefa = str(uuid.uuid4())
     urls      = carga_util.get("urls")
     url       = carga_util.get("url")
