@@ -1,4 +1,4 @@
-import type { Tarefa, OpcoesTarefa, InfoFila, InfoMemoria } from "./types";
+import type { Tarefa, OpcoesTarefa, InfoFila } from "./types";
 
 const DEFAULT_BASE_URL = "http://localhost:4000";
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || DEFAULT_BASE_URL;
@@ -88,5 +88,4 @@ export const api = {
   },
 
   infoFila: () => request<InfoFila>("/api/sistema/fila"),
-  infoMemoria: () => request<InfoMemoria>("/api/sistema/memoria"),
 };

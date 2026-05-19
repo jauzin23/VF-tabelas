@@ -67,11 +67,4 @@ export interface InfoFila {
   max_concurrent: number;
 }
 
-export interface InfoMemoria {
-  rss_mb: number;
-  vms_mb: number;
-  fila: InfoFila;
-  modelos_carregados: boolean;
-  tarefas_em_memoria: number;
-  erro?: string;
-}
+

@@ -8,9 +8,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 900M
+          memory: 1500M
         reservations:
-          memory: 512M
+          memory: 150M
     environment:
       # =======================================================================
       # NOTA IMPORTANTE: Para mais informação sobre cada uma destas variáveis de ambiente,
@@ -44,7 +44,7 @@ services:
       MIN_IMAGE_AREA: 9600
       TABLE_MIN_CONFIDENCE: 0.5
       YOLO_IMGSZ: 1024
-      ANALYSIS_CONCURRENCY: 1
+      ANALYSIS_CONCURRENCY: 2
       IMAGE_HTTP_RETRIES: 2
 
       # Fila e Gestão de Memória

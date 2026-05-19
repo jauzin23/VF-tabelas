@@ -105,7 +105,6 @@ async def middleware_verificar_api_key(request: Request, call_next):
 
 class CargaCriarTarefa(BaseModel):
     url: Optional[str] = None
-    urls: Optional[List[str]] = None
     opcoes: Optional[dict] = None
     sse: Optional[bool] = False
 
@@ -130,8 +129,8 @@ async def api_listar_tarefas():
 
 @app.post("/api/tarefas", status_code=201)
 async def api_criar_tarefa(carga: CargaCriarTarefa):
-    if not carga.url and not carga.urls:
-        raise HTTPException(status_code=400, detail="É necessário fornecer 'url' ou 'urls'")
+    if not carga.url:
+        raise HTTPException(status_code=400, detail="É necessário fornecer 'url'")
     
     carga_dict = carga.dict()
     if carga.sse:
@@ -248,31 +247,6 @@ async def api_paginacao_multurls(carga: CargaPaginacao):
 async def api_fila():
     """Estado atual da fila de tarefas."""
     return fila_global.info()
-
-@app.get("/api/sistema/memoria")
-async def api_memoria():
-    """Uso de memória do processo backend."""
-    dados_extra = {
-        "modelos_carregados": modelos_carregados(),
-        "ia_em_uso_por_tarefa": ia_em_uso_por_tarefa(),
-        "tarefas_ativas_ou_pendentes": existem_tarefas_ativas_ou_pendentes(),
-        "tarefas_em_memoria": len(tarefas_cache),
-        "fila": fila_global.info(),
-    }
-    try:
-        import psutil
-        proc = psutil.Process(os.getpid())
-        mem = proc.memory_info()
-        return {
-            "rss_mb": round(mem.rss / 1024 / 1024, 1),
-            "vms_mb": round(mem.vms / 1024 / 1024, 1),
-            **dados_extra
-        }
-    except ImportError:
-        return {
-            "erro": "psutil não instalado",
-            **dados_extra
-        }
 
 
 # ── Execução ──────────────────────────────────────────────────────────────────
