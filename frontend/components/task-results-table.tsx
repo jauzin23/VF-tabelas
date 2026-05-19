@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import { useEffect, useMemo, useState } from "react"
-import XLSX from "xlsx-js-style"
+import { useEffect, useMemo, useState } from "react";
+import XLSX from "xlsx-js-style";
 import {
   ArrowUpDown,
   Check,
@@ -16,25 +16,20 @@ import {
   List,
   Search,
   TableProperties,
-} from "lucide-react"
-import { toast } from "sonner"
+} from "lucide-react";
+import { toast } from "sonner";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -42,8 +37,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -51,7 +46,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Pagination,
   PaginationContent,
@@ -60,81 +55,81 @@ import {
   PaginationLink,
   PaginationNext,
   PaginationPrevious,
-} from "@/components/ui/pagination"
-import { ScrollArea } from "@/components/ui/scroll-area"
+} from "@/components/ui/pagination";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
-} from "@/components/ui/input-group"
-import { AspectRatio } from "@/components/ui/aspect-ratio"
+} from "@/components/ui/input-group";
+import { AspectRatio } from "@/components/ui/aspect-ratio";
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty"
-import { Separator } from "@/components/ui/separator"
+} from "@/components/ui/empty";
+import { Separator } from "@/components/ui/separator";
 
-import { api } from "@/lib/api"
-import type { ImagemResultado } from "@/lib/types"
-import { nomeDominio, truncar } from "@/lib/format"
+import { api } from "@/lib/api";
+import type { ImagemResultado } from "@/lib/types";
+import { nomeDominio, truncar } from "@/lib/format";
 
-type CampoOrdenacao = "tem_tabela"
-type Direcao = "asc" | "desc"
-type FiltroEtiqueta = "todas" | "com_tabela" | "sem_tabela"
+type CampoOrdenacao = "tem_tabela";
+type Direcao = "asc" | "desc";
+type FiltroEtiqueta = "todas" | "com_tabela" | "sem_tabela";
 
-const POR_PAGINA = 20
+const POR_PAGINA = 20;
 
-// ─── campo exportável ────────────────────────────────────────────────────────
 const CAMPOS_EXPORTAVEIS = [
-  { id: "id",            label: "ID" },
-  { id: "url_origem",    label: "URL Imagem" },
-  { id: "url_pagina",    label: "Página Principal" },
+  { id: "id", label: "ID" },
+  { id: "url_origem", label: "URL Imagem" },
+  { id: "url_pagina", label: "Página Principal" },
   { id: "titulo_pagina", label: "Título da Página" },
-  { id: "alt",           label: "Texto Alt" },
-  { id: "tem_tabela",    label: "Contém Tabela" },
-  { id: "paginas_origem",label: "Todas as Localizações" },
-] as const
+  { id: "alt", label: "Texto Alt" },
+  { id: "tem_tabela", label: "Contém Tabela" },
+  { id: "paginas_origem", label: "Todas as Localizações" },
+] as const;
 
-type CampoId = typeof CAMPOS_EXPORTAVEIS[number]["id"]
+type CampoId = (typeof CAMPOS_EXPORTAVEIS)[number]["id"];
 
 interface Props {
-  resultados: ImagemResultado[]
+  resultados: ImagemResultado[];
 }
 
-// ─── hooks auxiliares ────────────────────────────────────────────────────────
 function useCopiar() {
-  const [copiado, setCopiado] = useState<string | null>(null)
+  const [copiado, setCopiado] = useState<string | null>(null);
   function copiar(texto: string, chave: string) {
     navigator.clipboard.writeText(texto).then(() => {
-      setCopiado(chave)
-      toast.success("URL copiada")
-      setTimeout(() => setCopiado(null), 1500)
-    })
+      setCopiado(chave);
+      toast.success("URL copiada");
+      setTimeout(() => setCopiado(null), 1500);
+    });
   }
-  return { copiado, copiar }
+  return { copiado, copiar };
 }
 
-// ─── componente de cópia inline ──────────────────────────────────────────────
 function BotaoCopiar({
   url,
   chave,
   copiado,
   copiar,
 }: {
-  url: string
-  chave: string
-  copiado: string | null
-  copiar: (u: string, k: string) => void
+  url: string;
+  chave: string;
+  copiado: string | null;
+  copiar: (u: string, k: string) => void;
 }) {
-  const ativo = copiado === chave
+  const ativo = copiado === chave;
   return (
     <button
       type="button"
       aria-label="Copiar URL"
-      onClick={(e) => { e.preventDefault(); copiar(url, chave) }}
+      onClick={(e) => {
+        e.preventDefault();
+        copiar(url, chave);
+      }}
       className={[
         "ml-1 rounded p-0.5 transition-all",
         "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
@@ -145,24 +140,22 @@ function BotaoCopiar({
     >
       {ativo ? <Check className="size-3" /> : <Clipboard className="size-3" />}
     </button>
-  )
+  );
 }
 
-// ─── célula de página(s) ────────────────────────────────────────────────────
 function CelulaOrigem({ r }: { r: ImagemResultado }) {
-  const { copiado, copiar } = useCopiar()
+  const { copiado, copiar } = useCopiar();
   const paginas =
     r.paginas_origem && r.paginas_origem.length > 0
       ? r.paginas_origem
-      : [{ url: r.url_pagina, titulo: r.titulo_pagina }]
+      : [{ url: r.url_pagina, titulo: r.titulo_pagina }];
 
-  const primaria = paginas[0]
-  const tituloDisplay = primaria.titulo || nomeDominio(primaria.url)
-  const temMultiplas = paginas.length > 1
+  const primaria = paginas[0];
+  const tituloDisplay = primaria.titulo || nomeDominio(primaria.url);
+  const temMultiplas = paginas.length > 1;
 
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      {/* título / link primário */}
       <div className="group flex items-center gap-1 min-w-0">
         <a
           href={primaria.url}
@@ -189,16 +182,20 @@ function CelulaOrigem({ r }: { r: ImagemResultado }) {
         />
       </div>
 
-      {/* lista expandível para múltiplas páginas */}
       {temMultiplas ? (
         <details className="mt-0.5 group/det">
           <summary className="cursor-pointer text-[10px] text-muted-foreground hover:text-foreground list-none flex items-center gap-1">
-            <span className="group-open/det:rotate-90 transition-transform">▶</span>
+            <span className="group-open/det:rotate-90 transition-transform">
+              ▶
+            </span>
             Ver todas as {paginas.length} páginas
           </summary>
           <ul className="mt-1 space-y-0.5 pl-2 border-l ml-1 max-h-24 overflow-y-auto">
             {paginas.map((p, i) => (
-              <li key={i} className="group flex items-center gap-1 min-w-0 text-[10px]">
+              <li
+                key={i}
+                className="group flex items-center gap-1 min-w-0 text-[10px]"
+              >
                 <a
                   href={p.url}
                   target="_blank"
@@ -224,168 +221,165 @@ function CelulaOrigem({ r }: { r: ImagemResultado }) {
         </span>
       )}
     </div>
-  )
+  );
 }
 
-// ─── modal de exportação ─────────────────────────────────────────────────────
 function ExportModal({ resultados }: { resultados: ImagemResultado[] }) {
-  const [aberto, setAberto] = useState(false)
-  const [filtro, setFiltro] = useState<FiltroEtiqueta>("todas")
+  const [aberto, setAberto] = useState(false);
+  const [filtro, setFiltro] = useState<FiltroEtiqueta>("todas");
   const [campos, setCampos] = useState<Set<CampoId>>(
-    new Set(CAMPOS_EXPORTAVEIS.map((c) => c.id))
-  )
+    new Set(CAMPOS_EXPORTAVEIS.map((c) => c.id)),
+  );
 
   const dadosFiltrados = useMemo(() => {
-    if (filtro === "com_tabela") return resultados.filter((r) => r.tem_tabela)
-    if (filtro === "sem_tabela") return resultados.filter((r) => !r.tem_tabela)
-    return resultados
-  }, [resultados, filtro])
+    if (filtro === "com_tabela") return resultados.filter((r) => r.tem_tabela);
+    if (filtro === "sem_tabela") return resultados.filter((r) => !r.tem_tabela);
+    return resultados;
+  }, [resultados, filtro]);
 
   function toggleCampo(id: CampoId) {
     setCampos((prev) => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   }
 
   function construirObjeto(r: ImagemResultado): Record<string, unknown> {
-    const obj: Record<string, unknown> = {}
-    if (campos.has("id"))             obj.id = r.id
-    if (campos.has("url_origem"))     obj.url_origem = r.url_origem
-    if (campos.has("url_pagina"))     obj.url_pagina = r.url_pagina
-    if (campos.has("titulo_pagina"))  obj.titulo_pagina = r.titulo_pagina
-    if (campos.has("alt"))            obj.alt = r.alt
-    if (campos.has("tem_tabela"))     obj.tem_tabela = r.tem_tabela
-    if (campos.has("paginas_origem")) obj.paginas_origem = r.paginas_origem ?? []
-    return obj
+    const obj: Record<string, unknown> = {};
+    if (campos.has("id")) obj.id = r.id;
+    if (campos.has("url_origem")) obj.url_origem = r.url_origem;
+    if (campos.has("url_pagina")) obj.url_pagina = r.url_pagina;
+    if (campos.has("titulo_pagina")) obj.titulo_pagina = r.titulo_pagina;
+    if (campos.has("alt")) obj.alt = r.alt;
+    if (campos.has("tem_tabela")) obj.tem_tabela = r.tem_tabela;
+    if (campos.has("paginas_origem"))
+      obj.paginas_origem = r.paginas_origem ?? [];
+    return obj;
   }
 
-  // gera slug de data: YYYY-MM-DD_HH-MM
   function slugData() {
-    const agora = new Date()
-    const pad = (n: number) => String(n).padStart(2, "0")
+    const agora = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
     return (
       `${agora.getFullYear()}-${pad(agora.getMonth() + 1)}-${pad(agora.getDate())}` +
       `_${pad(agora.getHours())}-${pad(agora.getMinutes())}`
-    )
+    );
   }
 
   function nomeFicheiro(formato: string) {
-    const filtroSlug = filtro === "todas" ? "todos" : filtro
-    return `extração_${filtroSlug}_${slugData()}.${formato}`
+    const filtroSlug = filtro === "todas" ? "todos" : filtro;
+    return `extração_${filtroSlug}_${slugData()}.${formato}`;
   }
 
   function exportarJSON() {
-    const dados = dadosFiltrados.map(construirObjeto)
+    const dados = dadosFiltrados.map(construirObjeto);
     const blob = new Blob([JSON.stringify(dados, null, 2)], {
       type: "application/json",
-    })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = nomeFicheiro("json")
-    a.click()
-    URL.revokeObjectURL(url)
-    toast.success(`${dados.length} resultado(s) exportados como JSON`)
-    setAberto(false)
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nomeFicheiro("json");
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`${dados.length} resultado(s) exportados como JSON`);
+    setAberto(false);
   }
 
   function exportarExcel() {
     const linhas = dadosFiltrados.map((r) => {
-      const obj: Record<string, unknown> = {}
-      if (campos.has("id"))             obj["ID"] = r.id
-      if (campos.has("url_origem"))     obj["URL Imagem"] = r.url_origem
-      if (campos.has("url_pagina"))     obj["Página Principal"] = r.url_pagina
-      if (campos.has("titulo_pagina"))  obj["Título"] = r.titulo_pagina
-      if (campos.has("alt"))            obj["Alt"] = r.alt
-      if (campos.has("tem_tabela"))     obj["Contém Tabela"] = r.tem_tabela ? "Sim" : "Não"
+      const obj: Record<string, unknown> = {};
+      if (campos.has("id")) obj["ID"] = r.id;
+      if (campos.has("url_origem")) obj["URL Imagem"] = r.url_origem;
+      if (campos.has("url_pagina")) obj["Página Principal"] = r.url_pagina;
+      if (campos.has("titulo_pagina")) obj["Título"] = r.titulo_pagina;
+      if (campos.has("alt")) obj["Alt"] = r.alt;
+      if (campos.has("tem_tabela"))
+        obj["Contém Tabela"] = r.tem_tabela ? "Sim" : "Não";
       if (campos.has("paginas_origem")) {
-        const pags = r.paginas_origem ?? []
-        obj["Todas as Localizações"] = pags.map((p) => p.url).join("\n")
+        const pags = r.paginas_origem ?? [];
+        obj["Todas as Localizações"] = pags.map((p) => p.url).join("\n");
       }
-      return obj
-    })
+      return obj;
+    });
 
-    const ws = XLSX.utils.json_to_sheet(linhas)
+    const ws = XLSX.utils.json_to_sheet(linhas);
 
-    // auto-largura das colunas
-    const cabecalhos = Object.keys(linhas[0] ?? {})
+    const cabecalhos = Object.keys(linhas[0] ?? {});
     const larguras = cabecalhos.map((cab) => {
       const maxConteudo = linhas.reduce((max, linha) => {
-        const val = linha[cab]
-        if (val == null) return max
-        const maior = String(val).split("\n").reduce((m, l) => Math.max(m, l.length), 0)
-        return Math.max(max, maior)
-      }, 0)
-      return { wch: Math.min(80, Math.max(cab.length + 2, maxConteudo + 2)) }
-    })
-    ws["!cols"] = larguras
+        const val = linha[cab];
+        if (val == null) return max;
+        const maior = String(val)
+          .split("\n")
+          .reduce((m, l) => Math.max(m, l.length), 0);
+        return Math.max(max, maior);
+      }, 0);
+      return { wch: Math.min(80, Math.max(cab.length + 2, maxConteudo + 2)) };
+    });
+    ws["!cols"] = larguras;
 
-    // Aplicar estilos (wrapText e cores)
-    const intervalo = XLSX.utils.decode_range(ws["!ref"] ?? "A1")
-    const idxTabela = cabecalhos.indexOf("Contém Tabela")
+    const intervalo = XLSX.utils.decode_range(ws["!ref"] ?? "A1");
+    const idxTabela = cabecalhos.indexOf("Contém Tabela");
 
     for (let R = intervalo.s.r; R <= intervalo.e.r; R++) {
       for (let C = intervalo.s.c; C <= intervalo.e.c; C++) {
-        const addr = XLSX.utils.encode_cell({ r: R, c: C })
-        if (!ws[addr]) continue
+        const addr = XLSX.utils.encode_cell({ r: R, c: C });
+        if (!ws[addr]) continue;
 
-        // Estilo base (alinhamento e bordas leves)
         ws[addr].s = {
-          alignment: { 
-            wrapText: true, 
+          alignment: {
+            wrapText: true,
             vertical: "center",
-            horizontal: R === 0 ? "center" : "left" 
+            horizontal: R === 0 ? "center" : "left",
           },
-          font: { name: "Calibri", sz: 11 }
-        }
+          font: { name: "Calibri", sz: 11 },
+        };
 
-        // Cabeçalho a negrito
         if (R === 0) {
-          ws[addr].s.font.bold = true
-          ws[addr].s.fill = { fgColor: { rgb: "F2F2F2" } }
+          ws[addr].s.font.bold = true;
+          ws[addr].s.fill = { fgColor: { rgb: "F2F2F2" } };
         }
+        const colCabecalho = cabecalhos[C];
+        const colunasURL = [
+          "URL Imagem",
+          "Página Principal",
+          "Todas as Localizações",
+        ];
 
-        // Links clicáveis e azuis para colunas de URL
-        const colCabecalho = cabecalhos[C]
-        const colunasURL = ["URL Imagem", "Página Principal", "Todas as Localizações"]
-        
         if (R > 0 && colunasURL.includes(colCabecalho)) {
-          const valor = ws[addr].v
+          const valor = ws[addr].v;
           if (valor && typeof valor === "string" && valor.startsWith("http")) {
-            // Se tiver múltiplas URLs (newline), SheetJS só suporta um link por célula.
-            // Usamos o primeiro URL como alvo principal.
-            const alvo = valor.split("\n")[0]
-            ws[addr].l = { Target: alvo, Tooltip: "Clique para abrir" }
-            ws[addr].s.font.color = { rgb: "0563C1" }
-            ws[addr].s.font.underline = true
+            const alvo = valor.split("\n")[0];
+            ws[addr].l = { Target: alvo, Tooltip: "Clique para abrir" };
+            ws[addr].s.font.color = { rgb: "0563C1" };
+            ws[addr].s.font.underline = true;
           }
         }
 
-        // Cor condicional na coluna "Contém Tabela"
         if (R > 0 && C === idxTabela) {
-          const valor = ws[addr].v
+          const valor = ws[addr].v;
           if (valor === "Sim") {
-            ws[addr].s.fill = { fgColor: { rgb: "C6EFCE" } } // Verde suave
-            ws[addr].s.font = { color: { rgb: "006100" }, bold: true }
+            ws[addr].s.fill = { fgColor: { rgb: "C6EFCE" } };
+            ws[addr].s.font = { color: { rgb: "006100" }, bold: true };
           } else {
-            ws[addr].s.fill = { fgColor: { rgb: "FFC7CE" } } // Vermelho suave
-            ws[addr].s.font = { color: { rgb: "9C0006" }, bold: true }
+            ws[addr].s.fill = { fgColor: { rgb: "FFC7CE" } };
+            ws[addr].s.font = { color: { rgb: "9C0006" }, bold: true };
           }
-          ws[addr].s.alignment.horizontal = "center"
+          ws[addr].s.alignment.horizontal = "center";
         }
       }
     }
 
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Resultados")
-    XLSX.writeFile(wb, nomeFicheiro("xlsx"))
-    toast.success(`${linhas.length} resultado(s) exportados como Excel`)
-    setAberto(false)
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Resultados");
+    XLSX.writeFile(wb, nomeFicheiro("xlsx"));
+    toast.success(`${linhas.length} resultado(s) exportados como Excel`);
+    setAberto(false);
   }
 
-  const nenhumCampo = campos.size === 0
+  const nenhumCampo = campos.size === 0;
 
   return (
     <Dialog open={aberto} onOpenChange={setAberto}>
@@ -406,10 +400,12 @@ function ExportModal({ resultados }: { resultados: ImagemResultado[] }) {
         </DialogHeader>
 
         <div className="flex flex-col gap-5 pt-1">
-          {/* filtro de conteúdo */}
           <div className="flex flex-col gap-2">
             <Label className="text-sm font-medium">Conteúdo a exportar</Label>
-            <Select value={filtro} onValueChange={(v) => setFiltro(v as FiltroEtiqueta)}>
+            <Select
+              value={filtro}
+              onValueChange={(v) => setFiltro(v as FiltroEtiqueta)}
+            >
               <SelectTrigger>
                 <Filter className="size-4 mr-2 shrink-0" />
                 <SelectValue />
@@ -430,7 +426,6 @@ function ExportModal({ resultados }: { resultados: ImagemResultado[] }) {
 
           <Separator />
 
-          {/* seleção de campos */}
           <div className="flex flex-col gap-2">
             <Label className="text-sm font-medium">Campos a incluir</Label>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2">
@@ -454,7 +449,6 @@ function ExportModal({ resultados }: { resultados: ImagemResultado[] }) {
 
           <Separator />
 
-          {/* botões de formato */}
           <div className="flex flex-col gap-2">
             <Label className="text-sm font-medium">Formato</Label>
             <div className="grid grid-cols-2 gap-3">
@@ -486,67 +480,65 @@ function ExportModal({ resultados }: { resultados: ImagemResultado[] }) {
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
-// ─── componente principal ────────────────────────────────────────────────────
 export function TaskResultsTable({ resultados }: Props) {
-  const [pesquisa, setPesquisa] = useState("")
-  const [filtroEtiqueta, setFiltroEtiqueta] = useState<FiltroEtiqueta>("todas")
-  const [campo, setCampo] = useState<CampoOrdenacao>("tem_tabela")
-  const [direcao, setDirecao] = useState<Direcao>("desc")
-  const [paginaAtual, setPaginaAtual] = useState(1)
-  const [porPagina, setPorPagina] = useState(20)
-  const [vista, setVista] = useState<"tabela" | "grelha">("tabela")
+  const [pesquisa, setPesquisa] = useState("");
+  const [filtroEtiqueta, setFiltroEtiqueta] = useState<FiltroEtiqueta>("todas");
+  const [campo, setCampo] = useState<CampoOrdenacao>("tem_tabela");
+  const [direcao, setDirecao] = useState<Direcao>("desc");
+  const [paginaAtual, setPaginaAtual] = useState(1);
+  const [porPagina, setPorPagina] = useState(20);
+  const [vista, setVista] = useState<"tabela" | "grelha">("tabela");
 
-  // Scroll para o topo ao mudar de página
   useEffect(() => {
-    const el = document.getElementById("resultados-ancora")
+    const el = document.getElementById("resultados-ancora");
     if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" })
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  }, [paginaAtual, porPagina])
+  }, [paginaAtual, porPagina]);
 
   const filtradas = useMemo(() => {
-    let lista = [...resultados]
+    let lista = [...resultados];
 
     if (pesquisa.trim()) {
-      const q = pesquisa.trim().toLowerCase()
+      const q = pesquisa.trim().toLowerCase();
       lista = lista.filter((r) =>
         [r.url_origem, r.url_pagina, r.titulo_pagina, r.alt]
           .filter(Boolean)
           .some((s) => s.toLowerCase().includes(q)),
-      )
+      );
     }
 
     if (filtroEtiqueta === "com_tabela") {
-      lista = lista.filter((r) => r.tem_tabela)
+      lista = lista.filter((r) => r.tem_tabela);
     } else if (filtroEtiqueta === "sem_tabela") {
-      lista = lista.filter((r) => !r.tem_tabela)
+      lista = lista.filter((r) => !r.tem_tabela);
     }
 
     lista.sort((a, b) => {
-      const av = a.tem_tabela ? 1 : 0
-      const bv = b.tem_tabela ? 1 : 0
-      if (av < bv) return direcao === "asc" ? -1 : 1
-      if (av > bv) return direcao === "asc" ? 1 : -1
-      return 0
-    })
+      const av = a.tem_tabela ? 1 : 0;
+      const bv = b.tem_tabela ? 1 : 0;
+      if (av < bv) return direcao === "asc" ? -1 : 1;
+      if (av > bv) return direcao === "asc" ? 1 : -1;
+      return 0;
+    });
 
-    return lista
-  }, [resultados, pesquisa, filtroEtiqueta, campo, direcao])
+    return lista;
+  }, [resultados, pesquisa, filtroEtiqueta, campo, direcao]);
 
-  const totalPaginas = Math.max(1, Math.ceil(filtradas.length / porPagina))
-  const paginaSegura = Math.min(paginaAtual, totalPaginas)
-  const inicio = (paginaSegura - 1) * porPagina
-  const visiveis = filtradas.slice(inicio, inicio + porPagina)
+  const totalPaginas = Math.max(1, Math.ceil(filtradas.length / porPagina));
+  const paginaSegura = Math.min(paginaAtual, totalPaginas);
+  const inicio = (paginaSegura - 1) * porPagina;
+  const visiveis = filtradas.slice(inicio, inicio + porPagina);
 
   function alternarOrdenacao(c: CampoOrdenacao) {
     if (campo === c) {
-      setDirecao((d) => (d === "asc" ? "desc" : "asc"))
+      setDirecao((d) => (d === "asc" ? "desc" : "asc"));
     } else {
-      setCampo(c)
-      setDirecao("desc")
+      setCampo(c);
+      setDirecao("desc");
     }
   }
 
@@ -564,7 +556,7 @@ export function TaskResultsTable({ resultados }: Props) {
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
-    )
+    );
   }
 
   return (
@@ -572,7 +564,8 @@ export function TaskResultsTable({ resultados }: Props) {
       <CardHeader className="border-b py-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <CardTitle className="text-base font-semibold shrink-0">
-            {filtradas.length} de {resultados.length} resultado{resultados.length === 1 ? "" : "s"}
+            {filtradas.length} de {resultados.length} resultado
+            {resultados.length === 1 ? "" : "s"}
           </CardTitle>
 
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
@@ -585,8 +578,8 @@ export function TaskResultsTable({ resultados }: Props) {
                   placeholder="Pesquisar..."
                   value={pesquisa}
                   onChange={(e) => {
-                    setPesquisa(e.target.value)
-                    setPaginaAtual(1)
+                    setPesquisa(e.target.value);
+                    setPaginaAtual(1);
                   }}
                   className="h-9"
                 />
@@ -596,8 +589,8 @@ export function TaskResultsTable({ resultados }: Props) {
             <Select
               value={filtroEtiqueta}
               onValueChange={(v) => {
-                setFiltroEtiqueta(v as FiltroEtiqueta)
-                setPaginaAtual(1)
+                setFiltroEtiqueta(v as FiltroEtiqueta);
+                setPaginaAtual(1);
               }}
             >
               <SelectTrigger className="h-9 w-[150px]">
@@ -611,15 +604,20 @@ export function TaskResultsTable({ resultados }: Props) {
               </SelectContent>
             </Select>
 
-            <Separator orientation="vertical" className="mx-1 hidden h-6 xl:block" />
+            <Separator
+              orientation="vertical"
+              className="mx-1 hidden h-6 xl:block"
+            />
 
             <div className="flex items-center gap-2">
-              <span className="hidden text-xs text-muted-foreground whitespace-nowrap sm:inline">Mostrar:</span>
-              <Select 
-                value={String(porPagina)} 
+              <span className="hidden text-xs text-muted-foreground whitespace-nowrap sm:inline">
+                Mostrar:
+              </span>
+              <Select
+                value={String(porPagina)}
                 onValueChange={(v) => {
-                  setPorPagina(Number(v))
-                  setPaginaAtual(1)
+                  setPorPagina(Number(v));
+                  setPaginaAtual(1);
                 }}
               >
                 <SelectTrigger className="h-9 w-[70px] text-xs">
@@ -659,7 +657,7 @@ export function TaskResultsTable({ resultados }: Props) {
           </div>
         </div>
       </CardHeader>
-      
+
       <CardContent className="p-0">
         {vista === "tabela" ? (
           <Table>
@@ -739,36 +737,35 @@ export function TaskResultsTable({ resultados }: Props) {
             ) : (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
                 {visiveis.map((r) => (
-                  <div 
-                    key={r.id} 
+                  <div
+                    key={r.id}
                     className="group relative flex flex-col overflow-hidden rounded-xl border bg-card shadow-sm transition-all hover:shadow-md hover:border-primary/20"
                   >
-                    {/* Header / Imagem com Aspect Ratio */}
                     <div className="relative aspect-[4/3] w-full overflow-hidden bg-muted">
                       <PreviaImagem imagem={r} triggerOnly />
-                      
-                      {/* Badge de Status Flutuante */}
+
                       <div className="absolute top-2.5 right-2.5 z-10">
                         {r.tem_tabela ? (
                           <Badge className="bg-emerald-600/90 text-white backdrop-blur-md border-none shadow-sm font-medium">
                             Tabela
                           </Badge>
                         ) : (
-                          <Badge variant="destructive" className="bg-rose-600/90 text-white backdrop-blur-md border-none shadow-sm font-medium">
+                          <Badge
+                            variant="destructive"
+                            className="bg-rose-600/90 text-white backdrop-blur-md border-none shadow-sm font-medium"
+                          >
                             Não tabela
                           </Badge>
                         )}
                       </div>
 
-                      {/* Ícone de lupa ao passar o rato (indicador visual) */}
                       <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/0 opacity-0 transition-all group-hover:bg-black/10 group-hover:opacity-100 pointer-events-none">
-                         <div className="rounded-full bg-white/20 p-2 backdrop-blur-md">
-                            <ImageIcon className="size-5 text-white" />
-                         </div>
+                        <div className="rounded-full bg-white/20 p-2 backdrop-blur-md">
+                          <ImageIcon className="size-5 text-white" />
+                        </div>
                       </div>
                     </div>
 
-                    {/* Conteúdo / Info */}
                     <div className="flex flex-col p-4 pt-3 gap-3">
                       <CelulaOrigem r={r} />
                     </div>
@@ -779,7 +776,6 @@ export function TaskResultsTable({ resultados }: Props) {
           </div>
         )}
 
-
         {totalPaginas > 1 && (
           <div className="border-t p-3">
             <Pagination>
@@ -789,8 +785,8 @@ export function TaskResultsTable({ resultados }: Props) {
                     href="#"
                     aria-disabled={paginaSegura === 1}
                     onClick={(e) => {
-                      e.preventDefault()
-                      if (paginaSegura > 1) setPaginaAtual(paginaSegura - 1)
+                      e.preventDefault();
+                      if (paginaSegura > 1) setPaginaAtual(paginaSegura - 1);
                     }}
                   />
                 </PaginationItem>
@@ -806,9 +802,9 @@ export function TaskResultsTable({ resultados }: Props) {
                     href="#"
                     aria-disabled={paginaSegura === totalPaginas}
                     onClick={(e) => {
-                      e.preventDefault()
+                      e.preventDefault();
                       if (paginaSegura < totalPaginas)
-                        setPaginaAtual(paginaSegura + 1)
+                        setPaginaAtual(paginaSegura + 1);
                     }}
                   />
                 </PaginationItem>
@@ -818,27 +814,26 @@ export function TaskResultsTable({ resultados }: Props) {
         )}
       </CardContent>
     </Card>
-  )
+  );
 }
 
-// ─── prévia da imagem ────────────────────────────────────────────────────────
-function PreviaImagem({ 
-  imagem, 
-  triggerOnly = false 
-}: { 
+function PreviaImagem({
+  imagem,
+  triggerOnly = false,
+}: {
   imagem: ImagemResultado;
   triggerOnly?: boolean;
 }) {
   const trigger = triggerOnly ? (
     <div className="group relative block size-full cursor-zoom-in overflow-hidden outline-none">
-       {/* eslint-disable-next-line @next/next/no-img-element */}
-       <img
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
         src={imagem.url_origem || "/placeholder.svg"}
         alt={imagem.alt || "Prévia"}
         referrerPolicy="no-referrer"
         className="size-full object-cover transition-transform duration-500 group-hover:scale-110"
         onError={(e) => {
-          ;(e.currentTarget as HTMLImageElement).style.display = "none"
+          (e.currentTarget as HTMLImageElement).style.display = "none";
         }}
       />
       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
@@ -856,17 +851,15 @@ function PreviaImagem({
         referrerPolicy="no-referrer"
         className="size-full object-cover"
         onError={(e) => {
-          ;(e.currentTarget as HTMLImageElement).style.display = "none"
+          (e.currentTarget as HTMLImageElement).style.display = "none";
         }}
       />
     </button>
-  )
+  );
 
   return (
     <Dialog>
-      <DialogTrigger asChild>
-        {trigger}
-      </DialogTrigger>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="sm:max-w-2xl overflow-hidden">
         <DialogHeader className="min-w-0">
           <DialogTitle className="break-words leading-tight">
@@ -877,7 +870,10 @@ function PreviaImagem({
           </DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-[60vh]">
-          <AspectRatio ratio={16 / 10} className="overflow-hidden rounded-md bg-muted">
+          <AspectRatio
+            ratio={16 / 10}
+            className="overflow-hidden rounded-md bg-muted"
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={imagem.url_origem || "/placeholder.svg"}
@@ -907,13 +903,14 @@ function PreviaImagem({
             </dt>
             <dd className="overflow-hidden">
               <ScrollArea
-                className={(imagem.paginas_origem?.length || 0) > 3 ? "h-32" : ""}
+                className={
+                  (imagem.paginas_origem?.length || 0) > 3 ? "h-32" : ""
+                }
               >
                 <ul className="space-y-1">
-                  {(
-                    imagem.paginas_origem && imagem.paginas_origem.length > 0
-                      ? imagem.paginas_origem
-                      : [{ url: imagem.url_pagina, titulo: imagem.titulo_pagina }]
+                  {(imagem.paginas_origem && imagem.paginas_origem.length > 0
+                    ? imagem.paginas_origem
+                    : [{ url: imagem.url_pagina, titulo: imagem.titulo_pagina }]
                   ).map((p, i) => (
                     <li key={i} className="truncate flex items-center gap-2">
                       <a
@@ -930,7 +927,9 @@ function PreviaImagem({
                 </ul>
               </ScrollArea>
             </dd>
-            <dt className="text-muted-foreground mt-1 shrink-0">URL da Imagem</dt>
+            <dt className="text-muted-foreground mt-1 shrink-0">
+              URL da Imagem
+            </dt>
             <dd className="min-w-0">
               <a
                 href={imagem.url_origem}
@@ -945,33 +944,31 @@ function PreviaImagem({
         </ScrollArea>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
-// ─── paginação com elli'psis ──────────────────────────────────────────────────
 function PaginacaoNumerica({
   total,
   atual,
   onChange,
 }: {
-  total: number
-  atual: number
-  onChange: (p: number) => void
+  total: number;
+  atual: number;
+  onChange: (p: number) => void;
 }) {
-  // constrói a sequência de páginas a mostrar, com null = ell'ipsis
   function paginas(): (number | null)[] {
-    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
 
-    const vizinhos = 1 // números à volta da página actual
-    const inicio = Math.max(2, atual - vizinhos)
-    const fim    = Math.min(total - 1, atual + vizinhos)
+    const vizinhos = 1;
+    const inicio = Math.max(2, atual - vizinhos);
+    const fim = Math.min(total - 1, atual + vizinhos);
 
-    const mostrar: (number | null)[] = [1]
-    if (inicio > 2)      mostrar.push(null)          // ellipsis esquerdo
-    for (let i = inicio; i <= fim; i++) mostrar.push(i)
-    if (fim < total - 1) mostrar.push(null)          // ellipsis direito
-    mostrar.push(total)
-    return mostrar
+    const mostrar: (number | null)[] = [1];
+    if (inicio > 2) mostrar.push(null);
+    for (let i = inicio; i <= fim; i++) mostrar.push(i);
+    if (fim < total - 1) mostrar.push(null);
+    mostrar.push(total);
+    return mostrar;
   }
 
   return (
@@ -986,13 +983,16 @@ function PaginacaoNumerica({
             <PaginationLink
               href="#"
               isActive={atual === p}
-              onClick={(e) => { e.preventDefault(); onChange(p) }}
+              onClick={(e) => {
+                e.preventDefault();
+                onChange(p);
+              }}
             >
               {p}
             </PaginationLink>
           </PaginationItem>
-        )
+        ),
       )}
     </>
-  )
+  );
 }

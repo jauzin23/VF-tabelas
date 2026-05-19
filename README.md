@@ -1,4 +1,4 @@
-# VF-Tabelas - Deteção Automática de Tabelas de Dados em Websites
+# VFTabelas - Deteção Automática de Tabelas de Dados em Websites
 
 Esta é uma ferramenta para dar crawl a websites, extrair as suas imagens e analisar cada uma delas através do modelo IA (**YOLO11**). O objetivo principal é identificar imagens ou capturas de ecrã que contêm tabelas de dados.
 

@@ -39,7 +39,6 @@ export function SiteHeader() {
 
         <Separator orientation="vertical" className="mx-1 h-5" />
 
-        {/* Navegação horizontal (md+) */}
         <nav className="hidden items-center gap-1 md:flex">
           {itensNav.map((item) => {
             const ativo = ehAtivo(pathname, item.href);
@@ -60,7 +59,6 @@ export function SiteHeader() {
           })}
         </nav>
 
-        {/* Navegação compacta (mobile) */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button

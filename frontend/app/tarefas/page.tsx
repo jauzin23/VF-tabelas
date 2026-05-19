@@ -23,7 +23,6 @@ function TarefasContent() {
   useEffect(() => {
     if (searchParams.get("nova") === "true") {
       setOpen(true);
-      // Limpar o parâmetro da URL sem recarregar
       const params = new URLSearchParams(searchParams.toString());
       params.delete("nova");
       router.replace(`/tarefas?${params.toString()}`, { scroll: false });

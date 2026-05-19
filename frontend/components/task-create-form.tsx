@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { toast } from "sonner"
-import { Link as LinkIcon, Layers, Sparkles, Settings2 } from "lucide-react"
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Link as LinkIcon, Layers, Sparkles, Settings2 } from "lucide-react";
 
 import {
   Card,
@@ -11,146 +11,142 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
-import { Slider } from "@/components/ui/slider"
-import { Separator } from "@/components/ui/separator"
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
+import { Separator } from "@/components/ui/separator";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-} from "@/components/ui/accordion"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Spinner } from "@/components/ui/spinner"
+} from "@/components/ui/accordion";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Spinner } from "@/components/ui/spinner";
 
-import { api } from "@/lib/api"
-import { useTarefasLocais } from "@/lib/store"
-import type { OpcoesTarefa } from "@/lib/types"
+import { api } from "@/lib/api";
+import { useTarefasLocais } from "@/lib/store";
+import type { OpcoesTarefa } from "@/lib/types";
 
-// Apenas opções que fazem sentido expor ao utilizador.
-// Os ajustes técnicos (timeout por página, concorrência de scraping/análise)
-// usam os valores definidos no servidor (.env) e não são expostos no UI.
-// Para URLs em lote, as opções são desativadas (processamento sequencial).
 type OpcoesUI = Required<
   Pick<
     OpcoesTarefa,
-    | "maxPages"
-    | "maxDepth"
-    | "seguirPaginacao"
-    | "seguirDetalhe"
+    "maxPages" | "maxDepth" | "seguirPaginacao" | "seguirDetalhe"
   >
->
+>;
 
 const PADRAO: OpcoesUI = {
   maxPages: 5,
   maxDepth: 2,
   seguirPaginacao: true,
   seguirDetalhe: true,
-}
+};
 
 export function TaskCreateForm({ noCard = false }: { noCard?: boolean }) {
-  const router = useRouter()
-  const { adicionar } = useTarefasLocais()
+  const router = useRouter();
+  const { adicionar } = useTarefasLocais();
 
-  const [modo, setModo] = useState<"unico" | "lote">("unico")
-  const [url, setUrl] = useState("")
-  const [urlsTexto, setUrlsTexto] = useState("")
-  const [aSubmeter, setASubmeter] = useState(false)
-  const [opcoes, setOpcoes] = useState<OpcoesUI>(PADRAO)
+  const [modo, setModo] = useState<"unico" | "lote">("unico");
+  const [url, setUrl] = useState("");
+  const [urlsTexto, setUrlsTexto] = useState("");
+  const [aSubmeter, setASubmeter] = useState(false);
+  const [opcoes, setOpcoes] = useState<OpcoesUI>(PADRAO);
 
   function actualizar<K extends keyof OpcoesUI>(chave: K, valor: OpcoesUI[K]) {
-    setOpcoes((o) => ({ ...o, [chave]: valor }))
+    setOpcoes((o) => ({ ...o, [chave]: valor }));
   }
 
   function parseUrls(texto: string): string[] {
     return texto
       .split(/[\n,]+/)
       .map((s) => s.trim())
-      .filter(Boolean)
+      .filter(Boolean);
   }
 
   function validarUrl(u: string): boolean {
     try {
-      new URL(u)
-      return true
+      new URL(u);
+      return true;
     } catch {
-      return false
+      return false;
     }
   }
 
   async function submeter() {
-    setASubmeter(true)
+    setASubmeter(true);
     try {
       if (modo === "unico") {
         if (!validarUrl(url)) {
           toast.error("URL inválido", {
             description: "Inclui o esquema (http:// ou https://).",
-          })
-          return
+          });
+          return;
         }
-        const t = await api.criarTarefa(url, opcoes)
-        adicionar()
+        const t = await api.criarTarefa(url, opcoes);
+        adicionar();
         if (t.posicao_fila && t.posicao_fila > 1) {
           toast.success("Tarefa enfileirada", {
             description: `Na fila — posição #${t.posicao_fila}. Será processada assim que a tarefa atual terminar.`,
-          })
+          });
         } else {
           toast.success("Tarefa criada", {
             description: "A redirecionar para o acompanhamento…",
-          })
+          });
         }
-        router.push(`/tarefas/${t.id}`)
+        router.push(`/tarefas/${t.id}`);
       } else {
-        const lista = parseUrls(urlsTexto)
+        const lista = parseUrls(urlsTexto);
         if (lista.length === 0) {
           toast.error("Lista vazia", {
             description: "Indica pelo menos um URL.",
-          })
-          return
+          });
+          return;
         }
-        const invalidos = lista.filter((u) => !validarUrl(u))
+        const invalidos = lista.filter((u) => !validarUrl(u));
         if (invalidos.length > 0) {
           toast.error(`${invalidos.length} URL(s) inválidos`, {
             description: invalidos.slice(0, 3).join("\n"),
-          })
-          return
+          });
+          return;
         }
-        const t = await api.criarTarefaLote(lista)
-        adicionar()
+        const t = await api.criarTarefaLote(lista);
+        adicionar();
         if (t.posicao_fila && t.posicao_fila > 1) {
           toast.success("Tarefa em lote enfileirada", {
             description: `${lista.length} URLs — posição #${t.posicao_fila} na fila.`,
-          })
+          });
         } else {
           toast.success("Tarefa em lote criada", {
             description: `${lista.length} URLs enviados.`,
-          })
+          });
         }
-        router.push(`/tarefas/${t.id}`)
+        router.push(`/tarefas/${t.id}`);
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Erro desconhecido"
-      // Mensagem específica para fila cheia (503)
-      if (msg.includes("fila") || msg.includes("ocupado") || msg.includes("503")) {
+      const msg = e instanceof Error ? e.message : "Erro desconhecido";
+      if (
+        msg.includes("fila") ||
+        msg.includes("ocupado") ||
+        msg.includes("503")
+      ) {
         toast.error("Servidor ocupado", {
-          description: "A fila de tarefas está cheia. Aguarda que algumas terminem e tenta novamente.",
-        })
+          description:
+            "A fila de tarefas está cheia. Aguarda que algumas terminem e tenta novamente.",
+        });
       } else {
-        toast.error("Falha ao criar tarefa", { description: msg })
+        toast.error("Falha ao criar tarefa", { description: msg });
       }
     } finally {
-      setASubmeter(false)
+      setASubmeter(false);
     }
   }
 
-
-  const urlsParsed = parseUrls(urlsTexto)
+  const urlsParsed = parseUrls(urlsTexto);
 
   const FormContent = (
     <CardContent className={noCard ? "p-0" : ""}>
@@ -194,7 +190,9 @@ export function TaskCreateForm({ noCard = false }: { noCard?: boolean }) {
                 <Textarea
                   id="urls"
                   rows={8}
-                  placeholder={"https://exemplo1.pt\nhttps://exemplo2.pt\nhttps://exemplo3.pt"}
+                  placeholder={
+                    "https://exemplo1.pt\nhttps://exemplo2.pt\nhttps://exemplo3.pt"
+                  }
                   value={urlsTexto}
                   onChange={(e) => setUrlsTexto(e.target.value)}
                   spellCheck={false}
@@ -212,17 +210,17 @@ export function TaskCreateForm({ noCard = false }: { noCard?: boolean }) {
         </div>
         <Separator className="my-6" />
 
-          {modo === "unico" && (
-            <Accordion type="single" collapsible defaultValue="opcoes">
-              <AccordionItem value="opcoes" className="border-none">
-                <AccordionTrigger className="text-sm font-medium pt-0">
-                  <span className="flex items-center gap-2">
-                    <Settings2 className="size-4" />
-                    Opções de execução
-                  </span>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <div className="grid gap-6 pt-2">
+        {modo === "unico" && (
+          <Accordion type="single" collapsible defaultValue="opcoes">
+            <AccordionItem value="opcoes" className="border-none">
+              <AccordionTrigger className="text-sm font-medium pt-0">
+                <span className="flex items-center gap-2">
+                  <Settings2 className="size-4" />
+                  Opções de execução
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="grid gap-6 pt-2">
                   <SliderField
                     id="maxPages"
                     rotulo="Máximo de páginas por URL"
@@ -282,61 +280,59 @@ export function TaskCreateForm({ noCard = false }: { noCard?: boolean }) {
           </Accordion>
         )}
 
-          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setOpcoes(PADRAO)}
-              disabled={aSubmeter}
-            >
-              Repor predefinições
-            </Button>
-            <Button
-              type="button"
-              onClick={submeter}
-              disabled={
-                aSubmeter ||
-                (modo === "unico" ? !url : urlsParsed.length === 0)
-              }
-            >
-              {aSubmeter ? (
-                <>
-                  <Spinner className="size-4" />
-                  A criar…
-                </>
-              ) : (
-                "Criar tarefa"
-              )}
-            </Button>
-          </div>
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setOpcoes(PADRAO)}
+            disabled={aSubmeter}
+          >
+            Repor predefinições
+          </Button>
+          <Button
+            type="button"
+            onClick={submeter}
+            disabled={
+              aSubmeter || (modo === "unico" ? !url : urlsParsed.length === 0)
+            }
+          >
+            {aSubmeter ? (
+              <>
+                <Spinner className="size-4" />A criar…
+              </>
+            ) : (
+              "Criar tarefa"
+            )}
+          </Button>
         </div>
-      </CardContent>
-  )
+      </div>
+    </CardContent>
+  );
 
   if (noCard) {
-    return FormContent
+    return FormContent;
   }
 
   return (
     <div className="gap-6">
       <Card className="lg:col-span-2">{FormContent}</Card>
     </div>
-  )
+  );
 }
 
 function Item({
   rotulo,
   children,
 }: {
-  rotulo: string
-  children: React.ReactNode
+  rotulo: string;
+  children: React.ReactNode;
 }) {
   return (
     <>
       <dt className="text-muted-foreground">{rotulo}</dt>
       <dd className="text-right font-medium tabular-nums">{children}</dd>
     </>
-  )
+  );
 }
 
 function SliderField({
@@ -350,15 +346,15 @@ function SliderField({
   onChange,
   formatar,
 }: {
-  id: string
-  rotulo: string
-  ajuda: string
-  min: number
-  max: number
-  step: number
-  valor: number
-  onChange: (v: number) => void
-  formatar?: (v: number) => string
+  id: string;
+  rotulo: string;
+  ajuda: string;
+  min: number;
+  max: number;
+  step: number;
+  valor: number;
+  onChange: (v: number) => void;
+  formatar?: (v: number) => string;
 }) {
   return (
     <div className="grid gap-2">
@@ -378,5 +374,5 @@ function SliderField({
       />
       <p className="text-xs text-muted-foreground">{ajuda}</p>
     </div>
-  )
+  );
 }

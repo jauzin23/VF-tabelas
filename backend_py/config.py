@@ -67,8 +67,6 @@ def env_bool(chave: str, padrao: bool) -> bool:
 
 
 def carregar_api_keys() -> list[str]:
-    """Carrega e valida as chaves de API a partir da variável de ambiente API_KEYS.
-    Se a variável estiver ausente ou vazia, encerra a aplicação com erro crítico."""
     garantir_ambiente_carregado()
     chaves_raw = os.getenv("API_KEYS", "")
     chaves = [c.strip() for c in chaves_raw.split(",") if c.strip()]
@@ -89,12 +87,6 @@ async def verificar_api_key(
     request: Request,
     query_api_key: Optional[str] = Query(None, alias="api_key")
 ) -> str:
-    """
-    Verifica se a requisição contém uma API Key válida em:
-    1. Cabeçalho 'X-API-Key'
-    2. Cabeçalho 'Authorization: Bearer <key>'
-    3. Parâmetro de query '?api_key=<key>'
-    """
     chave_extraida: Optional[str] = None
 
     header_api_key = request.headers.get("X-API-Key")
@@ -120,7 +112,6 @@ async def verificar_api_key(
 
 
 def carregar_config_fila() -> dict:
-    """Carrega todas as configurações do sistema de filas a partir de env vars."""
     garantir_ambiente_carregado()
     return {
         "max_queue_size":         env_int("MAX_QUEUE_SIZE", 0),
