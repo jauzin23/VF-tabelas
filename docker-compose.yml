@@ -8,10 +8,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 1500M
+          cpus: "2"
+          memory: 1000M
         reservations:
-          memory: 150M
+          memory: 200M
     environment:
       # Controlo de CPU
       OMP_NUM_THREADS: "1"
