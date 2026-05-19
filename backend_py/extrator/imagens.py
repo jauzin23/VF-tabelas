@@ -1,8 +1,3 @@
-"""
-extrator/imagens.py - Extração de imagens e dados Next.js de HTML/DOM.
-
-Antes: localizador_imagens.py + dados_next.py
-"""
 from __future__ import annotations
 
 import json as _json
@@ -14,11 +9,6 @@ from urllib.parse import urljoin
 from selectolax.parser import HTMLParser
 
 from .tipos import normalizar_imagem_url
-
-
-# ══════════════════════════════════════════════════════════════════
-# Secção: localizador_imagens
-# ══════════════════════════════════════════════════════════════════
 
 _RE_BG_URL = re.compile(r"url\(\s*['\"]?([^'\")]+)['\"]?\s*\)", re.I)
 _RE_SRCSET_PARTE = re.compile(r"\s+")
@@ -356,11 +346,6 @@ async (ignorarNavFooter = false) => {
 }
 """
 
-
-# ══════════════════════════════════════════════════════════════════
-# Secção: dados_next
-# ══════════════════════════════════════════════════════════════════
-
 _RE_IMG = re.compile(r"\.(?:jpg|jpeg|png|webp|avif|gif)\b", re.I)
 
 _CHAVES_TOTAL = (
@@ -510,8 +495,6 @@ def percorrer_paginacao(dados_next: dict[str, Any] | Any) -> dict[str, Any]:
 
 
 __all__ = [
-    # localizador_imagens
     "extrair_estatico", "extrair_links", "extrair_rel_next", "JS_EXTRAIR",
-    # dados_next
     "extrair_dados_next", "percorrer_imagens", "percorrer_paginacao",
 ]

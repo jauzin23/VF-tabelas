@@ -12,12 +12,7 @@ services:
         reservations:
           memory: 150M
     environment:
-      # =======================================================================
-      # NOTA IMPORTANTE: Para mais informação sobre cada uma destas variáveis de ambiente,
-      # consulta o README.md
-      # =======================================================================
-
-      # Controlo de Threads CPU (Evita que o PyTorch/AI consuma todos os cores do host)
+      # Controlo de CPU
       OMP_NUM_THREADS: "1"
       MKL_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"

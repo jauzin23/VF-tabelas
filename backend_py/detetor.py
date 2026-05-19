@@ -1,8 +1,3 @@
-"""
-detetor.py - Deteção de tabelas via YOLO11 (yolo11-document-layout).
-Modelo: Armaggheddon/yolo11-document-layout  (yolo11n_doc_layout.pt)
-Mantém a mesma interface pública assíncrona usada pelo resto da aplicação.
-"""
 import io
 import os
 import gc
@@ -25,12 +20,8 @@ from config import registo, garantir_ambiente_carregado, env_bool, env_int
 
 garantir_ambiente_carregado()
 
-# ── Configuração ──────────────────────────────────────────────────────────────
-
 REPO_ID   = "Armaggheddon/yolo11-document-layout"
 FILENAME  = "yolo11n_doc_layout.pt"
-
-# Classe "Table" no modelo
 TABLE_CLASS_ID = 8
 
 CONFIANCA_MIN    = float(os.getenv("TABLE_MIN_CONFIDENCE", "0.35"))
@@ -43,20 +34,15 @@ UA_HTTP = (
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 
-# ── Estado global do modelo ───────────────────────────────────────────────────
 
 _bloqueio_modelos   = threading.Lock()
 _carregando_modelos = False
 _modelos_carregados = False
 _ultimo_uso_modelo  = 0.0
 
-_modelo = None   # instância YOLO
-
-
-# ── Carregamento / descarregamento ────────────────────────────────────────────
+_modelo = None
 
 def _garantir_modelos():
-    """Descarrega o modelo YOLO11 (lazy loading, thread-safe)."""
     global _modelos_carregados, _carregando_modelos, _ultimo_uso_modelo, _modelo
 
     if _modelos_carregados:
@@ -94,7 +80,6 @@ def _garantir_modelos():
 
 
 def descarregar_modelos():
-    """Liberta o modelo YOLO da memória."""
     global _modelos_carregados, _carregando_modelos, _modelo
 
     if not _modelos_carregados and not _carregando_modelos:
@@ -113,7 +98,6 @@ def descarregar_modelos():
 
 
 def modelos_carregados() -> bool:
-    """Retorna True se o modelo está em memória."""
     return _modelos_carregados
 
 
@@ -122,7 +106,6 @@ async def garantir_modelos_assincrono():
 
 
 async def gestor_ia_ram_loop():
-    """Tarefa de background: gere proativamente a RAM com base no estado das tarefas."""
     while True:
         await asyncio.sleep(10)
         try:
@@ -140,9 +123,6 @@ async def gestor_ia_ram_loop():
                     await garantir_modelos_assincrono()
         except Exception as e:
             registo.error(f"[Gestor RAM] Erro no loop de monitorização: {e}")
-
-
-# ── Utilitários HTTP ──────────────────────────────────────────────────────────
 
 def _obter_url_e_referencia(entrada):
     if isinstance(entrada, dict):
@@ -182,19 +162,11 @@ def _pedir_imagem_http(url: str, referencia: str | None, tempo_limite: float = 1
     return ultima
 
 
-# ── Pipeline de deteção ───────────────────────────────────────────────────────
-
 def _pil_to_cv2(imagem: Image.Image) -> np.ndarray:
-    """Converte PIL RGB → numpy BGR (formato OpenCV)."""
     return cv2.cvtColor(np.array(imagem), cv2.COLOR_RGB2BGR)
 
 
 def detetar_tabelas_em_imagem_pil(imagem: Image.Image) -> tuple:
-    """
-    Corre o modelo YOLO11 na imagem PIL fornecida.
-    Retorna (resultado_dict, imagem_pil).
-    resultado_dict contém pelo menos 'tem_tabela' e 'confianca'.
-    """
     try:
         _garantir_modelos()
 

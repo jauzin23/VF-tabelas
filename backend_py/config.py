@@ -1,16 +1,11 @@
-"""
-config.py - Configuração global: logging e ambiente.
-
-Antes: utilitarios/registo.py + utilitarios/ambiente.py
-"""
 import logging
 import os
 import sys
+from typing import Optional
 
 from dotenv import load_dotenv
-
-
-# ── Logging ──────────────────────────────────────────────────────────────────
+from fastapi import Request, HTTPException, Query
+from starlette.status import HTTP_401_UNAUTHORIZED
 
 def _configurar_registo() -> logging.Logger:
     formatador = logging.Formatter(
@@ -28,9 +23,6 @@ def _configurar_registo() -> logging.Logger:
 
 registo = _configurar_registo()
 
-
-# ── Ambiente ──────────────────────────────────────────────────────────────────
-
 def garantir_ambiente_carregado():
     raiz_repo = os.path.dirname(os.path.dirname(__file__))
     env_raiz = os.path.join(raiz_repo, ".env")
@@ -46,8 +38,6 @@ def resolver_caminho_dados(caminho_str):
         return caminho_str
     return os.path.abspath(caminho_str)
 
-
-# ── Helpers de Ambiente ──────────────────────────────────────────────────────
 
 def env_int(chave: str, padrao: int) -> int:
     v = os.getenv(chave)
@@ -76,8 +66,6 @@ def env_bool(chave: str, padrao: bool) -> bool:
     return v.lower() in ("true", "1", "yes", "sim")
 
 
-# ── Segurança (API Keys) ─────────────────────────────────────────────────────
-
 def carregar_api_keys() -> list[str]:
     """Carrega e valida as chaves de API a partir da variável de ambiente API_KEYS.
     Se a variável estiver ausente ou vazia, encerra a aplicação com erro crítico."""
@@ -94,16 +82,49 @@ def carregar_api_keys() -> list[str]:
     return chaves
 
 
-# ── Configuração do Sistema de Filas ─────────────────────────────────────────
+CHAVES_VALIDAS = carregar_api_keys()
+
+
+async def verificar_api_key(
+    request: Request,
+    query_api_key: Optional[str] = Query(None, alias="api_key")
+) -> str:
+    """
+    Verifica se a requisição contém uma API Key válida em:
+    1. Cabeçalho 'X-API-Key'
+    2. Cabeçalho 'Authorization: Bearer <key>'
+    3. Parâmetro de query '?api_key=<key>'
+    """
+    chave_extraida: Optional[str] = None
+
+    header_api_key = request.headers.get("X-API-Key")
+    if header_api_key:
+        chave_extraida = header_api_key.strip()
+
+    if not chave_extraida:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            chave_extraida = auth_header[len("Bearer "):].strip()
+
+    if not chave_extraida and query_api_key:
+        chave_extraida = query_api_key.strip()
+
+    if not chave_extraida or chave_extraida not in CHAVES_VALIDAS:
+        registo.warning(f"Tentativa de acesso não autorizada (IP: {request.client.host if request.client else 'desconhecido'})")
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="Não autorizado: API Key inválida ou ausente."
+        )
+
+    return chave_extraida
+
 
 def carregar_config_fila() -> dict:
     """Carrega todas as configurações do sistema de filas a partir de env vars."""
     garantir_ambiente_carregado()
     return {
-        # Fila
         "max_queue_size":         env_int("MAX_QUEUE_SIZE", 0),
         "max_concurrent_tasks":   env_int("MAX_CONCURRENT_TASKS", 1),
-        # Limpeza de memória
         "cleanup_after_s":        env_int("CLEANUP_RESULTS_AFTER_S", 300),
         "results_flush_interval": env_int("RESULTS_FLUSH_INTERVAL", 100),
     }

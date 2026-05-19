@@ -13,7 +13,6 @@ import httpx
 from config import registo, garantir_ambiente_carregado, resolver_caminho_dados
 
 from .renderizador_browser import GestorBrowser, renderizar_e_extrair
-from .suporte import construir_cliente
 from .imagens import (
     extrair_estatico, extrair_links, extrair_rel_next,
     percorrer_paginacao, extrair_dados_next, percorrer_imagens,
@@ -22,7 +21,7 @@ from .paginas import (
     construir_urls_fanout, detetar_paginacao, probar_paginas,
 )
 from .tipos import (
-    ImagemEncontrada, Paginacao,
+    ImagemEncontrada, Paginacao, construir_cliente,
     construir_url_paginada, deve_ignorar_url, env_int, normalizar_host, obter_hosts,
     normalizar_url, normalizar_url_pagina, parametro_pagina_de_url,
     parece_imagem, normalizar_imagem_url,
@@ -49,7 +48,6 @@ def _deve_ignorar_imagem_especifica(origem: str) -> bool:
     if "data:image/svg" in minuscula or path.endswith(".svg") or ".svg?" in minuscula:
         return True
     
-    # Padroes comuns de icones e lixo
     for padrao in ("basemaps.cartocdn.com", "tile.openstreetmap.org",
                   "maps.googleapis.com", "maps.gstatic.com",
                   "/icon", "/logo", "/avatar", "favicon", "thumb", "advert", "pixel"):
@@ -62,7 +60,6 @@ _RE_DIMENSOES_URL = re.compile(r"[-_](\d+)x(\d+)(?:\.|@|_|$)", re.I)
 
 
 def _imagem_muito_pequena(l: int, a: int, url: str = "") -> bool:
-    # Se temos dimensoes explicitas, usamos
     if l > 0 and a > 0:
         if l < 10 or a < 10:
             return True
@@ -70,7 +67,6 @@ def _imagem_muito_pequena(l: int, a: int, url: str = "") -> bool:
             return True
         return False
 
-    # Se nao temos dimensoes, tentamos inferir da URL
     if url:
         m = _RE_DIMENSOES_URL.search(url)
         if m:
@@ -78,8 +74,6 @@ def _imagem_muito_pequena(l: int, a: int, url: str = "") -> bool:
             if ul < LARGURA_MIN or ua < ALTURA_MIN or (ul * ua) < AREA_MIN:
                 return True
         
-        # Se contem palavras como icon, logo, etc. e nao temos dimensoes,
-        # assumimos que pode ser pequeno.
         u_low = url.lower()
         if any(x in u_low for x in ("icon", "logo", "avatar", "favicon", "/thumb", "/small")):
              return True
@@ -486,9 +480,6 @@ async def _processar_browser_paralelo(
     retrochamadas: dict[str, Any],
     ignorar_nav_footer: bool = False,
 ) -> list[str]:
-    """Processa páginas de paginação via browser em paralelo.
-    A concorrência real é controlada pelo semáforo global em GestorBrowser.pagina().
-    """
     urls = construir_urls_fanout(
         pag, url_base, pagina_inicial_excluir=pag.pagina_atual,
         max_paginas=paginas_max,
@@ -631,20 +622,18 @@ async def _rastrear_detalhes(
                             tentar_browser = (not html) or (gestor_browser is not None)
                             
                             if html:
-                                # Processamento estático inicial (pre-flight)
                                 await _processar_pagina_estatica(
                                     estado, url=url, html=html, dados_next=nd,
                                     max_total=max_total, max_por_pagina=max_por_pagina,
                                     retrochamadas=retrochamadas,
                                 )
                             
-                            # Sempre tenta o browser para detalhe em sites Next.js (garante conteúdo dinâmico)
                             if gestor_browser:
                                 try:
                                     dados_b = await renderizar_e_extrair(
                                         url, gestor_browser, tempo_limite_ms=tempo_limite_ms,
                                         capturar_api=False, ignorar_nav_footer=ignorar_nav_footer,
-                                        modo_rapido=True, # Detalhes em lote também usam modo rápido
+                                        modo_rapido=True,
                                     )
                                     html_b = dados_b.get("html")
                                     if html_b:
@@ -683,8 +672,7 @@ async def _rastrear_detalhes(
                     except Exception:
                         pass
                 
-                # Log de conclusão do detalhe
-                adicionadas_nesta_pag = 0 # (seria bom ter esse tracking por pagina, mas estado.imagens_incluidas é global)
+                adicionadas_nesta_pag = 0 
                 registo.info(
                     f"[Detalhe] {url} ({time.monotonic() - t0:.2f}s) "
                     f"vis={len(estado.paginas_visitadas)} fila={fila.qsize()}"
@@ -898,9 +886,6 @@ async def rastrear_site(
     try:
         todas_sementes = []
         if e_multi:
-            # Entry-points em paralelo - o semáforo global em GestorBrowser.pagina()
-            # garante que no máximo concorrencia_browser tabs Chromium ficam activos
-            # em simultâneo, prevenindo saturação sem sacrificar paralelismo.
             tarefas_iniciais = [
                 asyncio.create_task(_processar_ponto_entrada(u, ignorar_nav_footer=ignorar_nav_footer))
                 for u in urls_iniciais

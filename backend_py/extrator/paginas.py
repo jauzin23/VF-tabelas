@@ -1,8 +1,3 @@
-"""
-extrator/paginas.py - Deteção e fanout de paginação.
-
-Antes: extrator/paginacao.py
-"""
 from __future__ import annotations
 
 import hashlib

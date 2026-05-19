@@ -1,22 +1,13 @@
-"""
-extrator/tipos.py - Dataclasses e utilitários de URL do extrator.
-
-Antes: tipos.py + utilitarios_url.py
-"""
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+import httpx
 from typing import Any
 from urllib.parse import (
     parse_qs, parse_qsl, urlencode, urljoin,
     urlparse, urlunparse, unquote,
 )
-
-
-# ══════════════════════════════════════════════════════════════════
-# Secção: dataclasses
-# ══════════════════════════════════════════════════════════════════
 
 @dataclass
 class ImagemEncontrada:
@@ -43,10 +34,6 @@ class Paginacao:
     fonte: str = ""
     chave_lista_api: str | None = None
 
-
-# ══════════════════════════════════════════════════════════════════
-# Secção: utilitarios_url
-# ══════════════════════════════════════════════════════════════════
 
 EXTENSOES_IMAGEM = (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff", ".gif", ".avif")
 
@@ -214,14 +201,64 @@ def env_int(chave: str, padrao: int) -> int:
     except ValueError:
         return padrao
 
+_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+
+
+def construir_cliente(
+    *,
+    diretorio_cache: str | None = None,
+    tempo_limite: float = 20.0,
+    http2: bool = True,
+) -> httpx.AsyncClient:
+    cabecalhos = {
+        "User-Agent": _USER_AGENT,
+        "Accept-Language": "pt-PT,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.9,*/*;q=0.8",
+    }
+    tempos_limite = httpx.Timeout(timeout=tempo_limite, connect=10.0)
+    limites = httpx.Limits(max_keepalive_connections=20, max_connections=50)
+
+    transporte: httpx.AsyncBaseTransport | None = None
+    if diretorio_cache:
+        try:
+            import hishel
+            os.makedirs(diretorio_cache, exist_ok=True)
+            controlador = hishel.Controller(
+                cacheable_methods=["GET"],
+                cacheable_status_codes=[200, 301, 308],
+                allow_stale=False,
+                always_revalidate=False,
+            )
+            armazenamento = hishel.AsyncFileStorage(base_path=diretorio_cache, ttl=3600)
+            transporte = hishel.AsyncCacheTransport(
+                transport=httpx.AsyncHTTPTransport(http2=http2, retries=1),
+                controller=controlador,
+                storage=armazenamento,
+            )
+        except Exception:
+            transporte = None
+
+    if transporte is None:
+        return httpx.AsyncClient(
+            headers=cabecalhos, timeout=tempos_limite, limits=limites,
+            http2=http2, follow_redirects=True,
+        )
+
+    return httpx.AsyncClient(
+        transport=transporte, headers=cabecalhos, timeout=tempos_limite,
+        limits=limites, http2=http2, follow_redirects=True,
+    )
+
 
 __all__ = [
-    # dataclasses
     "ImagemEncontrada", "Paginacao",
-    # utilitarios_url
     "EXTENSOES_IMAGEM", "EXTENSOES_IGNORAR", "HOSTS_RASTREAMENTO", "PARAMETROS_PAGINACAO",
     "normalizar_host", "obter_hosts", "normalizar_url", "normalizar_url_pagina",
     "parametro_pagina_de_url", "e_paginacao", "deve_ignorar_url",
     "parece_imagem", "descodificar_imagem_next", "construir_url_paginada",
     "normalizar_imagem_url", "env_int",
+    "construir_cliente",
 ]

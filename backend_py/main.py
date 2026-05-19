@@ -1,8 +1,3 @@
-"""
-main.py - Ponto de entrada da API FastAPI.
-Agrega todas as rotas, middleware e gestão do ciclo de vida.
-Integra o sistema de filas para containers com pouca RAM.
-"""
 import asyncio
 import os
 from contextlib import asynccontextmanager
@@ -28,11 +23,8 @@ from detetor import (
 
 garantir_ambiente_carregado()
 
-# ── Ciclo de Vida ────────────────────────────────────────────────────────────
-
 @asynccontextmanager
 async def ciclo_vida(app: FastAPI):
-    # Silenciar erros comuns do Playwright/Patchright que não afetam a lógica
     loop = asyncio.get_running_loop()
     manipulador_original = loop.get_exception_handler()
     
@@ -48,10 +40,8 @@ async def ciclo_vida(app: FastAPI):
 
     registo.info("A iniciar serviços de background...")
     
-    # Iniciar fila global
     await fila_global.iniciar()
     
-    # Iniciar tarefas de background
     tarefa_manutencao = asyncio.create_task(manutencao_canais_loop())
     tarefa_gestor_ram = asyncio.create_task(gestor_ia_ram_loop())
     
@@ -85,11 +75,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from auth import verificar_api_key
+from config import verificar_api_key
 
 @app.middleware("http")
 async def middleware_verificar_api_key(request: Request, call_next):
-    # Ignorar requisições pre-flight CORS (OPTIONS) e rotas fora de /api (como /saude)
     if request.method == "OPTIONS" or not request.url.path.startswith("/api/"):
         return await call_next(request)
     
@@ -100,8 +89,6 @@ async def middleware_verificar_api_key(request: Request, call_next):
         
     return await call_next(request)
 
-
-# ── Modelos de Dados (Pydantic) ────────────────────────────────────────────────
 
 class CargaCriarTarefa(BaseModel):
     url: Optional[str] = None
@@ -114,14 +101,9 @@ class CargaPaginacao(BaseModel):
     sse: Optional[bool] = False
 
 
-# ── Rotas: Saúde ──────────────────────────────────────────────────────────────
-
 @app.get("/saude")
 async def saude():
     return "ok"
-
-
-# ── Rotas: Tarefas ────────────────────────────────────────────────────────────
 
 @app.get("/api/tarefas")
 async def api_listar_tarefas():
@@ -134,7 +116,6 @@ async def api_criar_tarefa(carga: CargaCriarTarefa):
     
     carga_dict = carga.dict()
     if carga.sse:
-        # Modo SSE: enfileirar e retornar imediatamente
         try:
             tarefa, posicao = await criar_tarefa(carga_dict)
         except asyncio.QueueFull:
@@ -150,7 +131,6 @@ async def api_criar_tarefa(carga: CargaCriarTarefa):
             "posicao_fila": posicao,
         }
     else:
-        # Modo bloqueante: executar diretamente (sem fila)
         tarefa = inicializar_tarefa(carga_dict)
         await publicar_e_persistir(tarefa)
         descarregar_modelos()
@@ -187,9 +167,6 @@ async def api_imagens_tarefa(id_tarefa: str):
     if not tarefa: raise HTTPException(status_code=404, detail="Tarefa não encontrada")
     return {"id": id_tarefa, "resultados": tarefa.get("resultados", [])}
 
-
-# ── Rotas: Modelo IA ──────────────────────────────────────────────────────────
-
 @app.post("/api/modelo/detetar-tabela")
 async def api_detetar_tabela(ficheiro: UploadFile = File(...)):
     try:
@@ -205,9 +182,6 @@ async def api_detetar_tabela(ficheiro: UploadFile = File(...)):
     except Exception as e:
         registo.error(f"Erro ao processar imagem em memória: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro ao processar imagem: {str(e)}")
-
-
-# ── Rotas: Paginação Multi-URLs ───────────────────────────────────────────────
 
 @app.post("/api/paginacao-multurls", status_code=201)
 async def api_paginacao_multurls(carga: CargaPaginacao):
@@ -240,16 +214,11 @@ async def api_paginacao_multurls(carga: CargaPaginacao):
         await executar_tarefa(tarefa["id"])
         return preparar_resposta_bloqueante(tarefa)
 
-
-# ── Rotas: Sistema (Monitorização) ───────────────────────────────────────────
-
 @app.get("/api/sistema/fila")
 async def api_fila():
     """Estado atual da fila de tarefas."""
     return fila_global.info()
 
-
-# ── Execução ──────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn

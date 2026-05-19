@@ -144,8 +144,6 @@ class GestorBrowser:
         self._browser = None
         self._contexto = None
         self._bloqueio = asyncio.Lock()
-        # Semáforo global: limita tabs Chromium simultâneos para toda a tarefa.
-        # Isto previne saturação quando entry-points + paginação correm em paralelo.
         self._sem_tabs = asyncio.Semaphore(max_tabs)
         self._aberto = False
 
@@ -166,18 +164,13 @@ class GestorBrowser:
                 "--disable-translate",
                 "--no-first-run",
             ]
-            # Modo single-process: poupa ~50MB mas crasha em Windows
             import sys
             if env_bool("BROWSER_SINGLE_PROCESS", False) and sys.platform != "win32":
                 argumentos.append("--single-process")
-
-            # Limitar heap JS do Chromium
             argumentos.append("--js-flags=--max-old-space-size=128")
-            # Args extras do .env
             extras = os.getenv("BROWSER_ARGS_EXTRA", "").strip()
             if extras:
                 argumentos.extend(a.strip() for a in extras.split(",") if a.strip())
-            # No Docker, headless tem de ser True. Em Windows local podes mudar para False no .env se quiseres ver.
             modo_headless = env_bool("BROWSER_HEADLESS", True)
             self._browser = await self._ctx_pw.chromium.launch(headless=modo_headless, args=argumentos)
             self._contexto = await self._browser.new_context(
@@ -206,9 +199,6 @@ class GestorBrowser:
 
     @asynccontextmanager
     async def pagina(self):
-        """Abre uma página nova dentro do semáforo global de tabs.
-        Qualquer coroutine que chame este método espera se o limite de tabs activos já foi atingido.
-        """
         await self.iniciar()
         async with self._sem_tabs:
             pagina = await self._contexto.new_page()
@@ -294,7 +284,6 @@ async def renderizar_e_extrair(
     ignorar_nav_footer: bool = False,
     modo_rapido: bool = False,
 ) -> dict[str, Any]:
-    """modo_rapido=True: waits mais curtos para páginas de paginação (já sabemos que o site funciona)."""
     registo_pedidos: list[dict[str, Any]] = []
     api_capturada: dict[str, Any] | None = None
 
@@ -360,11 +349,9 @@ async def renderizar_e_extrair(
 
         async def _aguardar_componentes():
             try:
-                # Modo rápido (paginação): sleep mínimo - o site já está "quente" no contexto
                 espera_inicial = 0.6 if modo_rapido else 2.0
                 espera_apos_selector = 0.5 if modo_rapido else 1.5
                 await asyncio.sleep(espera_inicial)
-                # Esperar por indicadores comuns de conteúdo ou qualquer imagem
                 await pagina.wait_for_selector('.ant-pagination, .ant-list-item, .ant-card, .article, .content, img', timeout=5000)
                 await asyncio.sleep(espera_apos_selector)
             except:
@@ -375,7 +362,6 @@ async def renderizar_e_extrair(
             pagina.evaluate(JS_AGUARDAR_ESTABILIDADE),
             _aguardar_componentes(),
         ]
-        # Expansão de menus só é relevante na página de entrada (não em paginação)
         if not modo_rapido:
             tarefas_estabilizacao.append(pagina.evaluate(JS_EXPANDIR_MENUS))
 

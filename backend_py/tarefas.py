@@ -1,12 +1,3 @@
-"""
-tarefas.py - Gestão de estado, persistência, fila global e eventos (SSE) de tarefas.
-
-Sistema de filas FIFO para containers com pouca RAM:
-- Apenas MAX_CONCURRENT_TASKS tarefas executam em simultâneo (default: 1)
-- Tarefas extras ficam em estado "na_fila" com posição visível
-- Resultados são periodicamente flushed para disco
-- Memória é limpa após conclusão
-"""
 import asyncio
 import gc
 import json
@@ -81,7 +72,6 @@ def obter_caminho_resultados_parciais(id_tarefa):
 
 
 def formatar_tarefa(tarefa):
-    """Prepara o dicionário da tarefa para consumo externo."""
     saida = {
         "id":           tarefa["id"],
         "url_alvo":     tarefa["url_alvo"],
@@ -105,7 +95,6 @@ def formatar_tarefa(tarefa):
 
 
 def preparar_resposta_bloqueante(tarefa):
-    """Simplifica a tarefa para respostas HTTP tradicionais (sem SSE)."""
     resultado = formatar_tarefa(tarefa)
     resultado.pop("opcoes", None)
     resultado.pop("esta_a_correr", None)
@@ -117,9 +106,6 @@ def preparar_resposta_bloqueante(tarefa):
     if "progresso" in resultado:
         resultado["resumo"] = resultado.pop("progresso")
     return resultado
-
-
-# ── Persistência e Eventos ───────────────────────────────────────────────────
 
 async def publicar_atualizacao_tarefa(tarefa_dict):
     id_tarefa = tarefa_dict["id"]
@@ -138,9 +124,7 @@ async def publicar_e_persistir(tarefa):
     with open(caminho, "w", encoding="utf8") as f:
         json.dump(formatada, f, indent=2, ensure_ascii=False)
 
-
 async def obter_eventos_tarefa(id_tarefa, pedido, estado_inicial=None):
-    """Gerador para streaming SSE de uma tarefa."""
     fila = asyncio.Queue()
     if id_tarefa not in canais_eventos:
         canais_eventos[id_tarefa] = []
@@ -166,10 +150,7 @@ async def obter_eventos_tarefa(id_tarefa, pedido, estado_inicial=None):
                 del canais_eventos[id_tarefa]
 
 
-# ── Flush de Resultados para Disco ───────────────────────────────────────────
-
 def _flush_resultados_para_disco(id_tarefa, resultados):
-    """Guarda resultados parciais em disco para libertar memória."""
     caminho = obter_caminho_resultados_parciais(id_tarefa)
     os.makedirs(os.path.dirname(caminho), exist_ok=True)
     serializados = [
@@ -191,9 +172,6 @@ def _carregar_resultados_de_disco(id_tarefa):
             pass
     return None
 
-
-# ── Lógica de Execução ───────────────────────────────────────────────────────
-
 async def executar_tarefa(id_tarefa):
     tarefa = tarefas.get(id_tarefa)
     if not tarefa: return
@@ -202,7 +180,6 @@ async def executar_tarefa(id_tarefa):
     tarefa["iniciado_em"] = datetime.utcnow().isoformat() + "Z"
     tarefa["posicao_fila"] = None
 
-    # Ficheiro de sinalização
     caminho_running = obter_caminho_running_tarefa(id_tarefa)
     os.makedirs(os.path.dirname(caminho_running), exist_ok=True)
     with open(caminho_running, "w") as f: f.write("")
@@ -231,7 +208,6 @@ async def executar_tarefa(id_tarefa):
                 asyncio.create_task(publicar_e_persistir(tarefa))
                 ultima_atualizacao_ui = agora
 
-            # Flush periódico de resultados para disco
             total_resultados = len(tarefa.get("resultados", []))
             if flush_interval > 0 and total_resultados > 0 and total_resultados - ultimo_flush >= flush_interval:
                 try:
@@ -251,7 +227,6 @@ async def executar_tarefa(id_tarefa):
             "id_tarefa":        id_tarefa,
         }
 
-        # 1. Rastreio / Extração
         registo.info(f"Tarefa {id_tarefa}: a iniciar rastreio. A garantir descarga da IA...")
         descarregar_modelos()
         rastreados, estatisticas = await rastrear_site(
@@ -270,7 +245,6 @@ async def executar_tarefa(id_tarefa):
         tarefa["progresso"]["imagens_unicas"] = len(tarefa["resultados"])
         await publicar_e_persistir(tarefa)
 
-        # 2. Análise IA
         registo.info(f"Tarefa {id_tarefa}: analise de {len(tarefa['resultados'])} imagens")
         definir_ia_em_uso(True)
         try:
@@ -291,13 +265,10 @@ async def executar_tarefa(id_tarefa):
         registo.error(f"Tarefa {id_tarefa} falhou: {e}", exc_info=True)
         tarefa["estado"] = "falhou"
         tarefa["erro"]   = str(e)
-        # Garantir descarga mesmo em caso de erro
         descarregar_modelos()
 
     tarefa["terminado_em"] = datetime.utcnow().isoformat() + "Z"
     if os.path.exists(caminho_running): os.remove(caminho_running)
-
-    # Flush final de resultados para disco
     if tarefa.get("resultados"):
         try:
             _flush_resultados_para_disco(id_tarefa, tarefa["resultados"])
@@ -306,15 +277,7 @@ async def executar_tarefa(id_tarefa):
 
     await publicar_e_persistir(tarefa)
 
-
-# ── Fila Global ──────────────────────────────────────────────────────────────
-
 class FilaGlobal:
-    """Fila FIFO global que serializa a execução de tarefas.
-    
-    Em containers com pouca RAM (1GB), apenas 1 tarefa deve executar
-    de cada vez. A fila garante que as restantes esperam ordeiramente.
-    """
     def __init__(self):
         max_size = _CONFIG_FILA.get("max_queue_size", 10)
         self._max_concurrent = _CONFIG_FILA.get("max_concurrent_tasks", 1)
@@ -347,7 +310,6 @@ class FilaGlobal:
         return self._fila.full()
 
     async def iniciar(self):
-        """Inicia o(s) worker(s) da fila."""
         registo.info(
             f"[Fila] Iniciada (max_concurrent={self._max_concurrent}, "
             f"max_queue={self._fila.maxsize})"
@@ -357,16 +319,12 @@ class FilaGlobal:
             self._worker_tasks.append(task)
 
     async def parar(self):
-        """Para todos os workers."""
         for t in self._worker_tasks:
             t.cancel()
         await asyncio.gather(*self._worker_tasks, return_exceptions=True)
         self._worker_tasks.clear()
 
     async def enfileirar(self, id_tarefa: str) -> int:
-        """Enfileira uma tarefa. Retorna a posição na fila.
-        Lança asyncio.QueueFull se a fila estiver cheia.
-        """
         async with self._bloqueio:
             if self.fila_cheia():
                 raise asyncio.QueueFull()
@@ -375,7 +333,6 @@ class FilaGlobal:
 
         await self._fila.put(id_tarefa)
         
-        # Atualizar estado da tarefa para "na_fila"
         tarefa = tarefas.get(id_tarefa)
         if tarefa:
             tarefa["estado"] = "na_fila"
@@ -386,7 +343,6 @@ class FilaGlobal:
         return posicao
 
     async def _atualizar_posicoes(self):
-        """Atualiza a posição de todas as tarefas em espera e notifica via SSE."""
         async with self._bloqueio:
             for i, tid in enumerate(self._tarefas_em_espera):
                 tarefa = tarefas.get(tid)
@@ -395,7 +351,6 @@ class FilaGlobal:
                     await publicar_e_persistir(tarefa)
 
     async def _worker_loop(self, worker_id: int):
-        """Worker que consome tarefas da fila sequencialmente."""
         registo.info(f"[Fila] Worker {worker_id} iniciado")
         while True:
             try:
@@ -403,13 +358,10 @@ class FilaGlobal:
             except asyncio.CancelledError:
                 break
 
-            # Remover da lista de espera
             async with self._bloqueio:
                 if id_tarefa in self._tarefas_em_espera:
                     self._tarefas_em_espera.remove(id_tarefa)
                 self._tarefa_ativa = id_tarefa
-
-            # Atualizar posições das restantes
             await self._atualizar_posicoes()
 
             try:
@@ -420,17 +372,14 @@ class FilaGlobal:
                 async with self._bloqueio:
                     self._tarefa_ativa = None
                 self._fila.task_done()
-                # Agendar limpeza de memória
                 asyncio.create_task(self._limpar_memoria_tarefa(id_tarefa))
 
     async def _limpar_memoria_tarefa(self, id_tarefa: str):
-        """Remove resultados da memória após CLEANUP_RESULTS_AFTER_S segundos."""
         if self._cleanup_after_s <= 0:
             return
         await asyncio.sleep(self._cleanup_after_s)
         tarefa = tarefas.get(id_tarefa)
         if tarefa and tarefa.get("estado") in ("concluido", "falhou"):
-            # Manter metadados, remover resultados pesados
             tarefa["resultados"] = []
             if id_tarefa in tarefas:
                 del tarefas[id_tarefa]
@@ -438,7 +387,6 @@ class FilaGlobal:
             registo.info(f"[Fila] Memória limpa para tarefa {id_tarefa}")
 
     def cancelar_na_fila(self, id_tarefa: str) -> bool:
-        """Remove uma tarefa da fila (antes de ter sido executada)."""
         if id_tarefa in self._tarefas_em_espera:
             self._tarefas_em_espera.remove(id_tarefa)
             tarefa = tarefas.get(id_tarefa)
@@ -451,7 +399,6 @@ class FilaGlobal:
         return False
 
     def info(self) -> dict:
-        """Retorna informação sobre o estado da fila."""
         return {
             "tarefa_ativa": self._tarefa_ativa,
             "em_espera": list(self._tarefas_em_espera),
@@ -460,12 +407,7 @@ class FilaGlobal:
             "max_concurrent": self._max_concurrent,
         }
 
-
-# Instância global da fila
 fila_global = FilaGlobal()
-
-
-# ── Gestão de Ciclo de Vida ───────────────────────────────────────────────────
 
 def inicializar_tarefa(carga_util):
     registo.info("Nova tarefa criada/inicializada. A descarregar modelos IA da RAM...")
@@ -505,10 +447,6 @@ def inicializar_tarefa(carga_util):
 
 
 async def criar_tarefa(carga_util):
-    """Cria uma tarefa e enfileira para execução.
-    Retorna (tarefa, posicao_fila).
-    Lança asyncio.QueueFull se a fila estiver cheia.
-    """
     tarefa = inicializar_tarefa(carga_util)
     posicao = await fila_global.enfileirar(tarefa["id"])
     return tarefa, posicao
@@ -523,7 +461,6 @@ def obter_tarefa(id_tarefa):
         try:
             with open(caminho, "r", encoding="utf8") as f:
                 dados = json.load(f)
-                # Carregar resultados do disco se não estiverem no JSON principal
                 if not dados.get("resultados"):
                     resultados_disco = _carregar_resultados_de_disco(id_tarefa)
                     if resultados_disco:
@@ -563,7 +500,6 @@ def listar_tarefas():
 
 
 def eliminar_tarefa(id_tarefa):
-    # Tentar cancelar da fila primeiro
     fila_global.cancelar_na_fila(id_tarefa)
     if id_tarefa in tarefas: del tarefas[id_tarefa]
     diretorio = os.path.join(CAMINHO_DADOS, "tarefas", id_tarefa)
