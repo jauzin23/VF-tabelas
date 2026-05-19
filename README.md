@@ -1,4 +1,4 @@
-# VFTabelas - Deteção Automática de Tabelas de Dados em Websites
+# VFTabelas - Deteção de Tabelas de Dados em Websites
 
 Esta é uma ferramenta para dar crawl a websites, extrair as suas imagens e analisar cada uma delas através do modelo IA (**YOLO11**). O objetivo principal é identificar imagens ou capturas de ecrã que contêm tabelas de dados.
 
@@ -258,39 +258,12 @@ Submete múltiplos URLs para processamento.
 
 ---
 
-## Guia de Utilização: Quando usar cada endpoint?
+## Tecnologias Utilizadas
 
-Para facilitar o desenvolvimento e integração com o sistema, utilize o seguinte guia rápido para escolher o endpoint adequado ao seu caso de uso:
+### Linguagens
 
-### A. Rastreio Completo e Dinâmico de um Site (com Painel Web/UI)
+[![](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)]() [![](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)]()
 
-- **Endpoint principal**: `POST /api/tarefas` com `"sse": true`.
-- **Fluxo recomendado**:
-  1. O frontend submete o URL do site a rastrear. O backend responde imediatamente com o `id` da tarefa e a sua `posicao_fila`.
-  2. O frontend estabelece uma ligação com `GET /api/tarefas/{id}/eventos?api_key=<chave>` via `EventSource` (Server-Sent Events) para monitorizar o progresso em tempo real (páginas descobertas, imagens processadas, status da fila e tabelas encontradas).
-  3. No final da tarefa, a ligação SSE é encerrada e os resultados finais podem ser recuperados ou atualizados dinamicamente a partir de `GET /api/tarefas/{id}`.
+### Frameworks & Ferramentas
 
-### B. Integração Síncrona Simples (Scripts CLI / Cronjobs)
-
-- **Endpoint principal**: `POST /api/tarefas` com `"sse": false`.
-- **Fluxo recomendado**:
-  - Um script de automação deseja obter tabelas de um site sem monitorizar o progresso intermédio. Ao enviar `"sse": false`, a requisição HTTP bloqueia e aguarda a execução completa do crawler e do modelo IA. A resposta HTTP final conterá diretamente a estrutura completa da tarefa concluída com os resultados.
-
-### C. Rastreio de Múltiplos URLs Específicos (Filtro de Ruído Visual)
-
-- **Endpoint principal**: `POST /api/paginacao-multurls` (com `"sse": true` ou `false`).
-- **Fluxo recomendado**:
-  - Indicado quando já possui uma lista de URLs específicos (ex: páginas de catálogo pré-compiladas) e quer evitar o processamento de imagens repetitivas que se encontram em áreas comuns do site. Este endpoint força a ativação do parâmetro `ignorar_nav_footer`, instruindo o motor a ignorar qualquer imagem localizada dentro das tags `<nav>`, `<aside>`, `<header>` ou `<footer>` do DOM de cada página.
-
-### D. Classificação Direta de Ficheiros Locais (sem Navegação Web)
-
-- **Endpoint principal**: `POST /api/modelo/detetar-tabela`.
-- **Fluxo recomendado**:
-  - Se a sua aplicação já possui uma imagem localmente (ex: screenshot tirado no telemóvel, PDF renderizado localmente) e apenas necessita de saber se a mesma contém tabelas antes de prosseguir, envie a imagem em formato _multipart/form-data_. A inferência é executada de forma imediata na RAM, devolvendo `{"tem_tabela": true/false}` em milissegundos sem acionar o crawler.
-
-### E. Monitorização e Gestão de Recursos
-
-- **Endpoints principais**: `GET /saude`, `GET /api/sistema/fila`.
-- **Fluxo recomendado**:
-  - **Orquestração de Contentores**: Utilize `/saude` para as sondas de liveness/readiness do Docker/Kubernetes.
-  - **Gestão de Filas**: Utilize `/api/sistema/fila` para obter métricas de concorrência ou detetar bloqueios na fila FIFO.
+[![](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)]() [![](https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)]() [![](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)]() [![](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwindcss&logoColor=white)]() [![](https://img.shields.io/badge/PyTorch-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)]() [![](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)]()

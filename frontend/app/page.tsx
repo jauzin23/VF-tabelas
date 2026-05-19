@@ -1,14 +1,6 @@
 import Link from "next/link";
-import { ListChecks, PlusCircle, ImageIcon, ArrowRight } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { DashboardStats } from "@/components/dashboard-stats";
 import { TaskList } from "@/components/task-list";
 
@@ -22,50 +14,6 @@ export default function PaginaInicial() {
       </div>
 
       <DashboardStats />
-
-      <div className="grid gap-4 md:grid-cols-1 grid-rows-2">
-        <Card className="md:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <PlusCircle className="size-4 text-primary" />
-              Nova tarefa
-            </CardTitle>
-            <CardDescription>
-              Submete um URL ou um lote para iniciar a extração.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild className="w-full">
-              <Link href="/tarefas?nova=true">
-                Criar tarefa
-                <ArrowRight className="size-4" />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="md:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ImageIcon className="size-4 text-primary" />
-              Detetar imagem
-            </CardTitle>
-            <CardDescription>
-              Carrega uma imagem para deteção direta de tabelas.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild variant="outline" className="w-full">
-              <Link href="/detetar">
-                Abrir detetor
-                <ArrowRight className="size-4" />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Separator />
 
       <div className="flex flex-col gap-3">
         <div className="flex items-end justify-between gap-4">

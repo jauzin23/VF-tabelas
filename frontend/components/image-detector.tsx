@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Image as ImageIcon,
   RotateCcw,
   TableProperties,
@@ -25,6 +27,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { cn } from "@/lib/utils";
 
 import { api } from "@/lib/api";
 
@@ -40,8 +43,26 @@ interface ImageResult {
 export function ImageDetector() {
   const [ficheiros, setFicheiros] = useState<ImageResult[]>([]);
   const [aArrastar, setAArrastar] = useState(false);
-  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [idxPreview, setIdxPreview] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (idxPreview === null) return;
+
+    const lidarComTeclado = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft" && idxPreview > 0) {
+        setIdxPreview(idxPreview - 1);
+      } else if (
+        e.key === "ArrowRight" &&
+        idxPreview < ficheiros.length - 1
+      ) {
+        setIdxPreview(idxPreview + 1);
+      }
+    };
+
+    window.addEventListener("keydown", lidarComTeclado);
+    return () => window.removeEventListener("keydown", lidarComTeclado);
+  }, [idxPreview, ficheiros.length]);
 
   const adicionarFicheiros = useCallback((files: FileList | null) => {
     if (!files) return;
@@ -225,7 +246,7 @@ export function ImageDetector() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {ficheiros.map((img) => {
+              {ficheiros.map((img, idx) => {
                 const temResultado = img.resultado !== null;
                 const temTabela = img.resultado?.tem_tabela === true;
 
@@ -236,7 +257,7 @@ export function ImageDetector() {
                   >
                     <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                       <button
-                        onClick={() => setPreviewId(img.id)}
+                        onClick={() => setIdxPreview(idx)}
                         className="h-16 w-16 shrink-0 overflow-hidden rounded border bg-muted cursor-pointer hover:opacity-80 transition-opacity"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -340,61 +361,118 @@ export function ImageDetector() {
         </Card>
       )}
 
-      {previewId && (
-        <Dialog
-          open={!!previewId}
-          onOpenChange={(open) => !open && setPreviewId(null)}
-        >
-          <DialogContent className="max-w-4xl max-h-[90vh]">
-            <VisuallyHidden asChild>
-              <DialogTitle>Preview imagem</DialogTitle>
-            </VisuallyHidden>
-            {(() => {
-              const img = ficheiros.find((f) => f.id === previewId);
-              if (!img) return null;
-              return (
-                <div className="flex flex-col gap-4">
-                  <div className="max-h-[70vh] overflow-auto flex items-center justify-center">
+      {/* Dialogo de visualização ampliada com navegação */}
+      <Dialog
+        open={idxPreview !== null}
+        onOpenChange={(open) => !open && setIdxPreview(null)}
+      >
+        <DialogContent className="sm:max-w-2xl overflow-visible p-6">
+          {idxPreview !== null && ficheiros[idxPreview] && (() => {
+            const img = ficheiros[idxPreview];
+            const temResultado = img.resultado !== null;
+            const temTabela = img.resultado?.tem_tabela === true;
+            return (
+              <div className="relative">
+                {/* Botões de navegação lateral */}
+                {idxPreview > 0 && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIdxPreview(idxPreview - 1);
+                    }}
+                    className={cn(
+                      "absolute top-1/2 -translate-y-1/2 rounded-full border shadow-md bg-background/90 hover:bg-background backdrop-blur-xs transition-all z-50 size-10",
+                      "left-4 md:-left-12"
+                    )}
+                    aria-label="Imagem anterior"
+                  >
+                    <ChevronLeft className="size-5" />
+                  </Button>
+                )}
+
+                {idxPreview < ficheiros.length - 1 && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIdxPreview(idxPreview + 1);
+                    }}
+                    className={cn(
+                      "absolute top-1/2 -translate-y-1/2 rounded-full border shadow-md bg-background/90 hover:bg-background backdrop-blur-xs transition-all z-50 size-10",
+                      "right-4 md:-right-12"
+                    )}
+                    aria-label="Próxima imagem"
+                  >
+                    <ChevronRight className="size-5" />
+                  </Button>
+                )}
+
+                {/* DialogHeader com Título e Descrição */}
+                <div className="min-w-0 mb-4 flex flex-col gap-1 pr-6">
+                  <DialogTitle className="break-words leading-tight text-lg font-semibold">
+                    {img.file.name}
+                  </DialogTitle>
+                  <p className="break-words text-xs text-muted-foreground">
+                    {(img.file.size / 1024).toFixed(1)} KB
+                  </p>
+                </div>
+
+                {/* Conteúdo rolável com scroll nativo responsivo */}
+                <div className="max-h-[calc(85vh-160px)] overflow-y-auto pr-1 select-none scrollbar-thin">
+                  <div className="relative w-full h-[200px] sm:h-[350px] rounded-md overflow-hidden bg-muted flex items-center justify-center border shadow-inner">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={img.preview}
                       alt={img.file.name}
-                      className="max-w-full max-h-[70vh] object-contain"
+                      className="max-h-full max-w-full object-contain"
                     />
                   </div>
-                  <div className="border-t pt-4 min-w-0">
-                    <p
-                      className="font-medium mb-2 truncate text-base"
-                      title={img.file.name}
-                    >
+
+                  <dl className="mt-4 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
+                    <dt className="text-muted-foreground font-medium">Status</dt>
+                    <dd className="font-medium">
+                      {img.aProcessar ? (
+                        <div className="flex items-center gap-2">
+                          <Spinner className="size-3" />
+                          <Badge variant="outline">A analisar…</Badge>
+                        </div>
+                      ) : img.erro ? (
+                        <Badge variant="destructive">{img.erro}</Badge>
+                      ) : temResultado ? (
+                        temTabela ? (
+                          <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white border-none font-semibold">
+                            <TableProperties className="size-3 mr-1 inline" />
+                            Sim (Tabela)
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="destructive"
+                            className="bg-rose-600 hover:bg-rose-700 text-white border-none font-semibold"
+                          >
+                            Não
+                          </Badge>
+                        )
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Não analisada</span>
+                      )}
+                    </dd>
+
+                    <dt className="text-muted-foreground font-medium mt-1 shrink-0">
+                      Nome do Ficheiro
+                    </dt>
+                    <dd className="min-w-0 text-xs font-mono font-medium truncate pt-0.5">
                       {img.file.name}
-                    </p>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      {(img.file.size / 1024).toFixed(1)} KB
-                    </p>
-                    {img.resultado?.tem_tabela && (
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white border-none">
-                          <TableProperties className="size-3 mr-1" />
-                          Sim (Tabela)
-                        </Badge>
-                      </div>
-                    )}
-                    {img.resultado && !img.resultado.tem_tabela && (
-                      <Badge
-                        variant="destructive"
-                        className="bg-rose-600 hover:bg-rose-700 text-white border-none"
-                      >
-                        Não
-                      </Badge>
-                    )}
-                  </div>
+                    </dd>
+                  </dl>
                 </div>
-              );
-            })()}
-          </DialogContent>
-        </Dialog>
-      )}
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

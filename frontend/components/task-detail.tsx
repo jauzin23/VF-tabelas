@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { useEffect, useRef, useState } from "react"
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -14,8 +14,8 @@ import {
   RefreshCw,
   Trash2,
   Zap,
-} from "lucide-react"
-import { toast } from "sonner"
+} from "lucide-react";
+import { toast } from "sonner";
 
 import {
   Card,
@@ -23,16 +23,12 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from "@/components/ui/alert"
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,108 +39,106 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+} from "@/components/ui/alert-dialog";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip"
+} from "@/components/ui/tooltip";
 
-import { TaskProgressCard } from "@/components/task-progress-card"
-import { TaskResultsTable } from "@/components/task-results-table"
-import { StateBadge } from "@/components/state-badge"
-import { api } from "@/lib/api"
-import { useTarefasLocais } from "@/lib/store"
-import type { Tarefa } from "@/lib/types"
-import { formatarData, formatarDuracao, nomeDominio } from "@/lib/format"
+import { TaskProgressCard } from "@/components/task-progress-card";
+import { TaskResultsTable } from "@/components/task-results-table";
+import { StateBadge } from "@/components/state-badge";
+import { api } from "@/lib/api";
+import { useTarefasLocais } from "@/lib/store";
+import type { Tarefa } from "@/lib/types";
+import { formatarData, formatarDuracao, nomeDominio } from "@/lib/format";
 
 interface Props {
-  id: string
+  id: string;
 }
 
 export function TaskDetail({ id }: Props) {
-  const router = useRouter()
-  const { remover } = useTarefasLocais()
-  const [tarefa, setTarefa] = useState<Tarefa | null>(null)
-  const [erro, setErro] = useState<string | null>(null)
-  const [aCarregar, setACarregar] = useState(true)
-  const [ligadoSSE, setLigadoSSE] = useState(false)
-  const sseRef = useRef<EventSource | null>(null)
+  const router = useRouter();
+  const { remover } = useTarefasLocais();
+  const [tarefa, setTarefa] = useState<Tarefa | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [aCarregar, setACarregar] = useState(true);
+  const [ligadoSSE, setLigadoSSE] = useState(false);
+  const sseRef = useRef<EventSource | null>(null);
 
   async function carregar() {
     try {
-      const t = await api.listarTarefa(id)
-      setTarefa(t)
-      setErro(null)
+      const t = await api.listarTarefa(id);
+      setTarefa(t);
+      setErro(null);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Erro desconhecido"
-      setErro(msg)
+      const msg = e instanceof Error ? e.message : "Erro desconhecido";
+      setErro(msg);
     } finally {
-      setACarregar(false)
+      setACarregar(false);
     }
   }
 
   useEffect(() => {
-    carregar()
-  }, [id])
+    carregar();
+  }, [id]);
 
   useEffect(() => {
-    if (!tarefa) return
+    if (!tarefa) return;
     if (tarefa.estado === "concluido" || tarefa.estado === "falhou") {
       if (!tarefa.esta_a_correr) {
-         if (sseRef.current) {
-            sseRef.current.close()
-            sseRef.current = null
-            setLigadoSSE(false)
-          }
-          return
+        if (sseRef.current) {
+          sseRef.current.close();
+          sseRef.current = null;
+          setLigadoSSE(false);
+        }
+        return;
       }
     }
-    if (sseRef.current) return
+    if (sseRef.current) return;
     try {
-      const es = api.eventosTarefa(id)
-      sseRef.current = es
-      setLigadoSSE(true)
+      const es = api.eventosTarefa(id);
+      sseRef.current = es;
+      setLigadoSSE(true);
       es.onmessage = (ev) => {
         try {
-          const dados = JSON.parse(ev.data) as Tarefa
-          setTarefa(dados)
-        } catch {
-        }
-      }
+          const dados = JSON.parse(ev.data) as Tarefa;
+          setTarefa(dados);
+        } catch {}
+      };
       es.onerror = () => {
-        setLigadoSSE(false)
-      }
+        setLigadoSSE(false);
+      };
     } catch {
-      setLigadoSSE(false)
+      setLigadoSSE(false);
     }
     return () => {
       if (sseRef.current) {
-        sseRef.current.close()
-        sseRef.current = null
-        setLigadoSSE(false)
+        sseRef.current.close();
+        sseRef.current = null;
+        setLigadoSSE(false);
       }
-    }
-  }, [id, tarefa?.estado, tarefa?.esta_a_correr])
+    };
+  }, [id, tarefa?.estado, tarefa?.esta_a_correr]);
 
   async function apagar() {
     try {
-      await api.apagarTarefa(id)
-    } catch {
-    }
-    remover()
-    toast.success("Tarefa apagada")
-    router.push("/tarefas")
+      await api.apagarTarefa(id);
+    } catch {}
+    remover();
+    toast.success("Tarefa apagada");
+    router.push("/tarefas");
   }
 
   function copiarId() {
-    navigator.clipboard.writeText(id)
-    toast.success("ID copiado")
+    navigator.clipboard.writeText(id);
+    toast.success("ID copiado");
   }
 
   if (aCarregar) {
-    return <DetalheSkeleton />
+    return <DetalheSkeleton />;
   }
 
   if (erro || !tarefa) {
@@ -171,14 +165,15 @@ export function TaskDetail({ id }: Props) {
           </Button>
         </div>
       </div>
-    )
+    );
   }
 
-  const urls = tarefa.urls_alvo && tarefa.urls_alvo.length > 0
-    ? tarefa.urls_alvo
-    : [tarefa.url_alvo]
-  const ehLote = (tarefa.urls_alvo?.length || 0) > 1
-  const running = tarefa.esta_a_correr
+  const urls =
+    tarefa.urls_alvo && tarefa.urls_alvo.length > 0
+      ? tarefa.urls_alvo
+      : [tarefa.url_alvo];
+  const ehLote = (tarefa.urls_alvo?.length || 0) > 1;
+  const running = tarefa.esta_a_correr;
 
   return (
     <TooltipProvider>
@@ -199,11 +194,13 @@ export function TaskDetail({ id }: Props) {
                     ? `Tarefa com ${urls.length} URLs`
                     : nomeDominio(tarefa.url_alvo)}
                 </h1>
-                <StateBadge estado={tarefa.estado} posicaoFila={tarefa.posicao_fila} />
+                <StateBadge
+                  estado={tarefa.estado}
+                  posicaoFila={tarefa.posicao_fila}
+                />
                 {running && (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-600 animate-pulse">
-                    <RefreshCw className="size-3 animate-spin" />
-                    A processar...
+                    <RefreshCw className="size-3 animate-spin" />A processar...
                   </span>
                 )}
                 {ligadoSSE && !running && (
@@ -214,7 +211,9 @@ export function TaskDetail({ id }: Props) {
                 )}
               </div>
               <p className="mt-1 truncate text-sm text-muted-foreground">
-                {ehLote ? `${urls.length} URLs em processamento` : tarefa.url_alvo}
+                {ehLote
+                  ? `${urls.length} URLs em processamento`
+                  : tarefa.url_alvo}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -229,7 +228,7 @@ export function TaskDetail({ id }: Props) {
                 disabled={aCarregar}
               >
                 <RefreshCw className="size-4" />
-                <span className="hidden sm:inline">Actualizar</span>
+                <span className="hidden sm:inline">Atualizar</span>
               </Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -242,8 +241,8 @@ export function TaskDetail({ id }: Props) {
                   <AlertDialogHeader>
                     <AlertDialogTitle>Apagar esta tarefa?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      A tarefa será removida do servidor permanentemente. 
-                      Os resultados serão descartados.
+                      A tarefa será removida do servidor permanentemente. Os
+                      resultados serão descartados.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -274,13 +273,16 @@ export function TaskDetail({ id }: Props) {
                     : "Na fila de espera"}
                 </h3>
                 <p className="mt-0.5 text-sm text-muted-foreground">
-                  Esta tarefa será processada assim que as tarefas anteriores terminarem.
-                  A página atualiza automaticamente quando a execução iniciar.
+                  Esta tarefa será processada assim que as tarefas anteriores
+                  terminarem. A página atualiza automaticamente quando a
+                  execução iniciar.
                 </p>
               </div>
               <div className="hidden sm:flex items-center gap-2">
                 <Clock className="size-4 text-amber-500 animate-pulse" />
-                <span className="text-xs font-medium text-amber-600 dark:text-amber-400">A aguardar</span>
+                <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                  A aguardar
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -300,7 +302,9 @@ export function TaskDetail({ id }: Props) {
             <TabsTrigger
               value="resultados"
               className="gap-0"
-              disabled={tarefa.estado === "em_execucao" || tarefa.estado === "na_fila"}
+              disabled={
+                tarefa.estado === "em_execucao" || tarefa.estado === "na_fila"
+              }
             >
               Resultados
             </TabsTrigger>
@@ -321,15 +325,15 @@ export function TaskDetail({ id }: Props) {
         </Tabs>
       </div>
     </TooltipProvider>
-  )
+  );
 }
 
 function ConfiguracaoCard({
   tarefa,
   urls,
 }: {
-  tarefa: Tarefa
-  urls: string[]
+  tarefa: Tarefa;
+  urls: string[];
 }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -344,9 +348,7 @@ function ConfiguracaoCard({
               <code className="font-mono text-xs">{tarefa.id}</code>
             </Linha>
             <Linha rotulo="Criada">{formatarData(tarefa.criado_em)}</Linha>
-            <Linha rotulo="Iniciada">
-              {formatarData(tarefa.iniciado_em)}
-            </Linha>
+            <Linha rotulo="Iniciada">{formatarData(tarefa.iniciado_em)}</Linha>
             <Linha rotulo="Terminada">
               {formatarData(tarefa.terminado_em)}
             </Linha>
@@ -368,7 +370,7 @@ function ConfiguracaoCard({
               <Linha rotulo="Páginas máx.">
                 {tarefa.opcoes.maxPages === 0
                   ? "Ilimitado"
-                  : tarefa.opcoes.maxPages ?? "-"}
+                  : (tarefa.opcoes.maxPages ?? "-")}
               </Linha>
               <Linha rotulo="Profundidade">
                 {tarefa.opcoes.maxDepth ?? "-"}
@@ -432,22 +434,22 @@ function ConfiguracaoCard({
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }
 
 function Linha({
   rotulo,
   children,
 }: {
-  rotulo: string
-  children: React.ReactNode
+  rotulo: string;
+  children: React.ReactNode;
 }) {
   return (
     <>
       <dt className="text-muted-foreground">{rotulo}</dt>
       <dd className="min-w-0 break-words font-medium">{children}</dd>
     </>
-  )
+  );
 }
 
 function DetalheSkeleton() {
@@ -461,5 +463,5 @@ function DetalheSkeleton() {
       </div>
       <Skeleton className="h-64 w-full" />
     </div>
-  )
+  );
 }

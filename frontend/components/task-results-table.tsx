@@ -5,6 +5,8 @@ import XLSX from "xlsx-js-style";
 import {
   ArrowUpDown,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Clipboard,
   Download,
   ExternalLink,
@@ -23,6 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -492,6 +495,8 @@ export function TaskResultsTable({ resultados }: Props) {
   const [porPagina, setPorPagina] = useState(20);
   const [vista, setVista] = useState<"tabela" | "grelha">("tabela");
 
+  const [idxImagemAberta, setIdxImagemAberta] = useState<number | null>(null);
+
   useEffect(() => {
     const el = document.getElementById("resultados-ancora");
     if (el) {
@@ -532,6 +537,29 @@ export function TaskResultsTable({ resultados }: Props) {
   const paginaSegura = Math.min(paginaAtual, totalPaginas);
   const inicio = (paginaSegura - 1) * porPagina;
   const visiveis = filtradas.slice(inicio, inicio + porPagina);
+
+  const imagemAberta =
+    idxImagemAberta !== null && idxImagemAberta < visiveis.length
+      ? visiveis[idxImagemAberta]
+      : null;
+
+  useEffect(() => {
+    if (idxImagemAberta === null) return;
+
+    const lidarComTeclado = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft" && idxImagemAberta > 0) {
+        setIdxImagemAberta(idxImagemAberta - 1);
+      } else if (
+        e.key === "ArrowRight" &&
+        idxImagemAberta < visiveis.length - 1
+      ) {
+        setIdxImagemAberta(idxImagemAberta + 1);
+      }
+    };
+
+    window.addEventListener("keydown", lidarComTeclado);
+    return () => window.removeEventListener("keydown", lidarComTeclado);
+  }, [idxImagemAberta, visiveis.length]);
 
   function alternarOrdenacao(c: CampoOrdenacao) {
     if (campo === c) {
@@ -689,10 +717,26 @@ export function TaskResultsTable({ resultados }: Props) {
                   </TableCell>
                 </TableRow>
               )}
-              {visiveis.map((r) => (
+              {visiveis.map((r, idx) => (
                 <TableRow key={r.id} className="align-middle">
                   <TableCell>
-                    <PreviaImagem imagem={r} />
+                    <button
+                      type="button"
+                      className="block size-12 overflow-hidden rounded-md border bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-zoom-in"
+                      onClick={() => setIdxImagemAberta(idx)}
+                      aria-label="Ampliar prévia"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={r.url_origem || "/placeholder.svg"}
+                        alt={r.alt || "Prévia"}
+                        referrerPolicy="no-referrer"
+                        className="size-full object-cover"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    </button>
                   </TableCell>
                   <TableCell>
                     <CelulaOrigem r={r} />
@@ -736,13 +780,26 @@ export function TaskResultsTable({ resultados }: Props) {
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-                {visiveis.map((r) => (
+                {visiveis.map((r, idx) => (
                   <div
                     key={r.id}
                     className="group relative flex flex-col overflow-hidden rounded-xl border bg-card shadow-sm transition-all hover:shadow-md hover:border-primary/20"
                   >
-                    <div className="relative aspect-[4/3] w-full overflow-hidden bg-muted">
-                      <PreviaImagem imagem={r} triggerOnly />
+                    <button
+                      type="button"
+                      className="relative aspect-[4/3] w-full overflow-hidden bg-muted cursor-zoom-in text-left border-none p-0 outline-none"
+                      onClick={() => setIdxImagemAberta(idx)}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={r.url_origem || "/placeholder.svg"}
+                        alt={r.alt || "Prévia"}
+                        referrerPolicy="no-referrer"
+                        className="size-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = "none";
+                        }}
+                      />
 
                       <div className="absolute top-2.5 right-2.5 z-10">
                         {r.tem_tabela ? (
@@ -764,7 +821,7 @@ export function TaskResultsTable({ resultados }: Props) {
                           <ImageIcon className="size-5 text-white" />
                         </div>
                       </div>
-                    </div>
+                    </button>
 
                     <div className="flex flex-col p-4 pt-3 gap-3">
                       <CelulaOrigem r={r} />
@@ -813,137 +870,142 @@ export function TaskResultsTable({ resultados }: Props) {
           </div>
         )}
       </CardContent>
-    </Card>
-  );
-}
 
-function PreviaImagem({
-  imagem,
-  triggerOnly = false,
-}: {
-  imagem: ImagemResultado;
-  triggerOnly?: boolean;
-}) {
-  const trigger = triggerOnly ? (
-    <div className="group relative block size-full cursor-zoom-in overflow-hidden outline-none">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={imagem.url_origem || "/placeholder.svg"}
-        alt={imagem.alt || "Prévia"}
-        referrerPolicy="no-referrer"
-        className="size-full object-cover transition-transform duration-500 group-hover:scale-110"
-        onError={(e) => {
-          (e.currentTarget as HTMLImageElement).style.display = "none";
-        }}
-      />
-      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-    </div>
-  ) : (
-    <button
-      type="button"
-      className="block size-12 overflow-hidden rounded-md border bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      aria-label="Ampliar prévia"
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={imagem.url_origem || "/placeholder.svg"}
-        alt={imagem.alt || "Prévia"}
-        referrerPolicy="no-referrer"
-        className="size-full object-cover"
-        onError={(e) => {
-          (e.currentTarget as HTMLImageElement).style.display = "none";
-        }}
-      />
-    </button>
-  );
-
-  return (
-    <Dialog>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="sm:max-w-2xl overflow-hidden">
-        <DialogHeader className="min-w-0">
-          <DialogTitle className="break-words leading-tight">
-            {imagem.titulo_pagina || nomeDominio(imagem.url_pagina)}
-          </DialogTitle>
-          <DialogDescription className="break-words">
-            {imagem.alt || imagem.url_origem}
-          </DialogDescription>
-        </DialogHeader>
-        <ScrollArea className="max-h-[60vh]">
-          <AspectRatio
-            ratio={16 / 10}
-            className="overflow-hidden rounded-md bg-muted"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={imagem.url_origem || "/placeholder.svg"}
-              alt={imagem.alt || "Imagem extraída"}
-              referrerPolicy="no-referrer"
-              className="h-full w-full object-contain"
-            />
-          </AspectRatio>
-          <dl className="mt-4 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
-            <dt className="text-muted-foreground">Status</dt>
-            <dd className="font-medium">
-              {imagem.tem_tabela ? (
-                <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white border-none">
-                  Tabela
-                </Badge>
-              ) : (
-                <Badge
-                  variant="destructive"
-                  className="bg-rose-600 hover:bg-rose-700 text-white border-none"
+      {/* Dialogo de visualização ampliada com navegação */}
+      <Dialog
+        open={idxImagemAberta !== null}
+        onOpenChange={(open) => !open && setIdxImagemAberta(null)}
+      >
+        <DialogContent className="sm:max-w-2xl overflow-visible p-6">
+          {imagemAberta && (
+            <div className="relative">
+              {/* Botões de navegação lateral */}
+              {idxImagemAberta !== null && idxImagemAberta > 0 && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIdxImagemAberta(idxImagemAberta - 1);
+                  }}
+                  className={cn(
+                    "absolute top-1/2 -translate-y-1/2 rounded-full border shadow-md bg-background/90 hover:bg-background backdrop-blur-xs transition-all z-50 size-10",
+                    "left-4 md:-left-12"
+                  )}
+                  aria-label="Imagem anterior"
                 >
-                  Não tabela
-                </Badge>
+                  <ChevronLeft className="size-5" />
+                </Button>
               )}
-            </dd>
-            <dt className="text-muted-foreground">
-              Origens ({imagem.paginas_origem?.length || 1})
-            </dt>
-            <dd className="overflow-hidden">
-              <ScrollArea
-                className={
-                  (imagem.paginas_origem?.length || 0) > 3 ? "h-32" : ""
-                }
-              >
-                <ul className="space-y-1">
-                  {(imagem.paginas_origem && imagem.paginas_origem.length > 0
-                    ? imagem.paginas_origem
-                    : [{ url: imagem.url_pagina, titulo: imagem.titulo_pagina }]
-                  ).map((p, i) => (
-                    <li key={i} className="truncate flex items-center gap-2">
-                      <a
-                        href={p.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary underline-offset-2 hover:underline text-xs truncate"
-                        title={p.titulo || p.url}
+
+              {idxImagemAberta !== null && idxImagemAberta < visiveis.length - 1 && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIdxImagemAberta(idxImagemAberta + 1);
+                  }}
+                  className={cn(
+                    "absolute top-1/2 -translate-y-1/2 rounded-full border shadow-md bg-background/90 hover:bg-background backdrop-blur-xs transition-all z-50 size-10",
+                    "right-4 md:-right-12"
+                  )}
+                  aria-label="Próxima imagem"
+                >
+                  <ChevronRight className="size-5" />
+                </Button>
+              )}
+
+              <DialogHeader className="min-w-0 mb-4">
+                <DialogTitle className="break-words leading-tight pr-6">
+                  {imagemAberta.titulo_pagina || nomeDominio(imagemAberta.url_pagina)}
+                </DialogTitle>
+                <DialogDescription className="break-words text-xs text-muted-foreground mt-1">
+                  {imagemAberta.alt || imagemAberta.url_origem}
+                </DialogDescription>
+              </DialogHeader>
+
+              {/* Conteúdo rolável com scroll nativo responsivo */}
+              <div className="max-h-[calc(85vh-160px)] overflow-y-auto pr-1 select-none scrollbar-thin">
+                <div className="relative w-full h-[200px] sm:h-[350px] rounded-md overflow-hidden bg-muted flex items-center justify-center border shadow-inner">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={imagemAberta.url_origem || "/placeholder.svg"}
+                    alt={imagemAberta.alt || "Imagem extraída"}
+                    referrerPolicy="no-referrer"
+                    className="max-h-full max-w-full object-contain"
+                  />
+                </div>
+
+                <dl className="mt-4 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
+                  <dt className="text-muted-foreground font-medium">Status</dt>
+                  <dd className="font-medium">
+                    {imagemAberta.tem_tabela ? (
+                      <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white border-none font-semibold">
+                        <TableProperties className="size-3 mr-1 inline" />
+                        Tabela
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="destructive"
+                        className="bg-rose-600 hover:bg-rose-700 text-white border-none font-semibold"
                       >
-                        {p.titulo || p.url}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </ScrollArea>
-            </dd>
-            <dt className="text-muted-foreground mt-1 shrink-0">
-              URL da Imagem
-            </dt>
-            <dd className="min-w-0">
-              <a
-                href={imagem.url_origem}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline-offset-2 hover:underline break-all text-xs"
-              >
-                {imagem.url_origem}
-              </a>
-            </dd>
-          </dl>
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
+                        Não tabela
+                      </Badge>
+                    )}
+                  </dd>
+
+                  <dt className="text-muted-foreground font-medium">
+                    Origens ({imagemAberta.paginas_origem?.length || 1})
+                  </dt>
+                  <dd className="overflow-hidden">
+                    <div
+                      className={cn(
+                        "pr-1 overflow-y-auto max-h-28 text-xs",
+                        (imagemAberta.paginas_origem?.length || 0) > 3 && "border-l pl-2"
+                      )}
+                    >
+                      <ul className="space-y-1">
+                        {(imagemAberta.paginas_origem && imagemAberta.paginas_origem.length > 0
+                          ? imagemAberta.paginas_origem
+                          : [{ url: imagemAberta.url_pagina, titulo: imagemAberta.titulo_pagina }]
+                        ).map((p, i) => (
+                          <li key={i} className="truncate flex items-center gap-2">
+                            <a
+                              href={p.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary underline-offset-2 hover:underline text-xs truncate font-medium"
+                              title={p.titulo || p.url}
+                            >
+                              {p.titulo || p.url}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </dd>
+
+                  <dt className="text-muted-foreground font-medium mt-1 shrink-0">
+                    URL da Imagem
+                  </dt>
+                  <dd className="min-w-0">
+                    <a
+                      href={imagemAberta.url_origem}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline-offset-2 hover:underline break-all text-xs font-mono font-medium"
+                    >
+                      {imagemAberta.url_origem}
+                    </a>
+                  </dd>
+                </dl>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </Card>
   );
 }
 

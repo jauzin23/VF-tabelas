@@ -38,7 +38,12 @@ export function TaskProgressCard({ tarefa }: Props) {
   const percentAnalise =
     totalImagens > 0 ? Math.round((analisadas / totalImagens) * 100) : 0
 
-  const metricas = [
+  const metricas: {
+    titulo: string
+    valor: string | number
+    icone: React.ComponentType<{ className?: string }>
+    destaque?: boolean
+  }[] = [
     {
       titulo: "Páginas Descobertas",
       valor: p.paginas_descobertas,
