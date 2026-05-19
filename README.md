@@ -34,7 +34,7 @@ Ferramenta para dar crawl a websites, extrair imagens e analisá-las utilizando 
 
 ---
 
-## ⚙️ Principais Variáveis de Configuração
+## Principais Variáveis de Configuração
 
 Configuráveis no `docker-compose.yml`:
 
