@@ -26,7 +26,7 @@ Ferramenta para dar crawl a websites, extrair imagens e analisá-las utilizando 
 
 - **Crawl Automático (Patchright/Chromium)**:
   - Aceitação automática de cookies e scroll incremental para carregar conteúdos dinâmicos.
-  - Estabilização do DOM (aguarda até que a contagem de links/imagens estabilize) e limite de abas abertas (`BROWSER_CONCURRENCY`).
+  - Estabilização do DOM (aguarda até que a contagem de links/imagens estabilize) e limite de abas abertas (`BROWSER_CONCURRENCY`). 
 - **Análise de IA (YOLO11)**:
   - Carregamento dinâmico do modelo (_Lazy Loading_) e descarregamento automático da RAM durante o crawl para otimização de recursos.
   - Configurações de confiança (`TABLE_MIN_CONFIDENCE`) e redimensionamento interno (`YOLO_IMGSZ`).

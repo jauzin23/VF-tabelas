@@ -13,6 +13,8 @@ services:
         reservations:
           memory: 200M
     environment:
+      TZ: Europe/Lisbon
+
       # Controlo de CPU
       OMP_NUM_THREADS: "1"
       MKL_NUM_THREADS: "1"
